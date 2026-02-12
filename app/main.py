@@ -1,21 +1,22 @@
+
 """
 Appointment API — FastAPI service providing appointment management with
-structured logging, Prometheus metrics, API‑key authentication, and
+structured logging, Prometheus metrics, API-key authentication, and
 cleanly tagged OpenAPI documentation.
 
 Features:
 - CRUD + cancellation workflow for appointments
-- API‑key protected endpoints using X‑API-Key header
+- API-key protected endpoints using X-API-Key header
 - Structured JSON access logs with request IDs
 - Prometheus metrics (request count + latency histograms)
 - Health, readiness, and service metadata endpoints
-- In‑memory datastore for development/testing
+- In-memory datastore for development/testing
 - OpenAPI tags for clean grouping in Swagger UI
 """
 
-from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi import FastAPI, HTTPException, Query, Request, Security
 from fastapi.responses import Response
+from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 from uuid import uuid4
@@ -78,14 +79,25 @@ app = FastAPI(
     title="Appointment API",
     version="0.2.0",
     openapi_tags=tags_metadata,
+
+    # NOTE: Swagger UI can be flaky with OpenAPI 3.1 in some bundled versions.
+    # For maximum compatibility (and to avoid a blank /docs page), publish as OAS 3.0.3.
+    openapi_version="3.0.3",
+
+    # NOTE: This keeps the API key in Swagger UI once you click "Authorize".
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 
+
 # ---- Auth (API Key) ----
-AUTH = [Security(require_api_key)]
+# NOTE: Use Security(...) so FastAPI auto-generates the OpenAPI security scheme
+# and Swagger UI shows the "Authorize" button.
+AUTH_DEPENDENCY = [Security(require_api_key)]
 AUTH_RESPONSES = {
     401: {"description": "Unauthorized"},
     403: {"description": "Forbidden"},
 }
+
 
 # ---- models ----
 class AppointmentCreate(BaseModel):
@@ -206,7 +218,7 @@ def info():
     "/api/v1/appointments",
     response_model=List[Appointment],
     tags=["Appointments"],
-    dependencies=AUTH,
+    dependencies=AUTH_DEPENDENCY,
     responses=AUTH_RESPONSES,
 )
 def list_appointments(
@@ -231,7 +243,7 @@ def list_appointments(
     response_model=Appointment,
     status_code=201,
     tags=["Appointments"],
-    dependencies=AUTH,
+    dependencies=AUTH_DEPENDENCY,
     responses=AUTH_RESPONSES,
 )
 def create_appointment(payload: AppointmentCreate):
@@ -251,7 +263,7 @@ def create_appointment(payload: AppointmentCreate):
     "/api/v1/appointments/{appointment_id}",
     response_model=Appointment,
     tags=["Appointments"],
-    dependencies=AUTH,
+    dependencies=AUTH_DEPENDENCY,
     responses=AUTH_RESPONSES,
 )
 def get_appointment(appointment_id: str):
@@ -263,7 +275,7 @@ def get_appointment(appointment_id: str):
     "/api/v1/appointments/{appointment_id}",
     response_model=Appointment,
     tags=["Appointments"],
-    dependencies=AUTH,
+    dependencies=AUTH_DEPENDENCY,
     responses=AUTH_RESPONSES,
 )
 def update_appointment(appointment_id: str, payload: AppointmentUpdate):
@@ -289,7 +301,7 @@ def update_appointment(appointment_id: str, payload: AppointmentUpdate):
     "/api/v1/appointments/{appointment_id}/cancel",
     response_model=Appointment,
     tags=["Appointments"],
-    dependencies=AUTH,
+    dependencies=AUTH_DEPENDENCY,
     responses=AUTH_RESPONSES,
 )
 def cancel_appointment(appointment_id: str):
@@ -310,7 +322,7 @@ def cancel_appointment(appointment_id: str):
     "/api/v1/appointments/{appointment_id}",
     status_code=204,
     tags=["Appointments"],
-    dependencies=AUTH,
+    dependencies=AUTH_DEPENDENCY,
     responses=AUTH_RESPONSES,
 )
 def delete_appointment(appointment_id: str):
@@ -324,14 +336,40 @@ def delete_appointment(appointment_id: str):
 @app.get(
     "/metrics",
     tags=["Observability"],
-    dependencies=[Depends(require_api_key)],
-    responses={
-        401: {"description": "Unauthorized"},
-        403: {"description": "Forbidden"},
-    },
+    dependencies=AUTH_DEPENDENCY,
+    responses=AUTH_RESPONSES,
 )
 def metrics():
-    return Response(
-        generate_latest(),
-        media_type=CONTENT_TYPE_LATEST
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# ---- OpenAPI customization (safe) ----
+# NOTE:
+# - We do NOT force a global "security" requirement here. We let per-route dependencies drive security.
+# - This prevents Swagger UI from breaking and keeps /docs public but showing "Authorize" when needed.
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+        tags=tags_metadata,
     )
+
+    # Ensure components exists
+    openapi_schema.setdefault("components", {})
+    openapi_schema["components"].setdefault("securitySchemes", {})
+
+    # Ensure our API key scheme exists (in case FastAPI didn't add it for any reason)
+    openapi_schema["components"]["securitySchemes"].setdefault(
+        "APIKeyHeader",
+        {"type": "apiKey", "in": "header", "name": "X-API-Key"},
+    )
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
