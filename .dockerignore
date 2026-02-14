@@ -14,10 +14,6 @@ env/
 .git/
 .gitignore
 
-# Docker (do NOT ignore Dockerfile)
-docker-compose.yml
-docker-compose*.yml
-
 # Environment files / secrets
 .env
 .env.*
