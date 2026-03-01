@@ -29,6 +29,10 @@ RUN useradd -m appuser
 # Copy application code into the image (and set correct ownership)
 COPY --chown=appuser:appuser app ./app
 
+# Copy Demo UI assets (templates + static)
+COPY --chown=appuser:appuser templates ./templates
+COPY --chown=appuser:appuser static ./static
+
 # Run as non-root
 USER appuser
 
