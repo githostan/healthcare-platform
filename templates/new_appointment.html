@@ -1,0 +1,43 @@
+
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row-between">
+  <div>
+    <h1 class="h1">Create Appointment</h1>
+    <p class="muted">Enter details below. Appointment time must be in the future.</p>
+  </div>
+  <a class="btn btn-ghost" href="/ui/appointments">Back</a>
+</div>
+
+<section class="card">
+  <form class="form" method="post" action="/ui/appointments">
+    <div class="field">
+      <label class="label">Patient ID</label>
+      <input class="input" name="patient_id" required placeholder="patient-123" />
+    </div>
+
+    <div class="field">
+  <label class="label">Patient Name</label>
+  <input class="input" name="patient_name" required placeholder="e.g. Ugom Nwachukwu" />
+</div>
+
+    <div class="field">
+      <label class="label">Clinic</label>
+      <input class="input" name="clinic" required placeholder="Cardiology" />
+    </div>
+
+    <div class="field">
+      <label class="label">Appointment Time (ISO8601 UTC)</label>
+      <input class="input" name="appointment_time" required placeholder="2026-03-01T12:00:00Z" />
+      <div class="hint">Example: <code>2026-03-01T12:00:00Z</code></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Create</button>
+      <a class="btn btn-ghost" href="/ui/appointments">Cancel</a>
+    </div>
+  </form>
+</section>
+
+{% endblock %}

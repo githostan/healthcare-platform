@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="grid">
+  <section class="card hero">
+    <div>
+      <h1 class="h1">Dashboard</h1>
+      <p class="lead">
+        A lightweight, server-rendered UI for demoing the Appointment API without frontend complexity.
+      </p>
+
+      <div class="pill-row">
+        <span class="pill">Service: {{ service }}</span>
+        <span class="pill">Version: {{ version }}</span>
+        <span class="pill">Appointments: {{ count }}</span>
+      </div>
+
+      <div class="actions">
+        <a class="btn" href="/ui/appointments">View appointments</a>
+        <a class="btn btn-primary" href="/ui/appointments/new">Create appointment</a>
+      </div>
+    </div>
+  </section>
+
+  <aside class="card">
+    <h2 class="h2">Quick Links</h2>
+    <ul class="list">
+      <li><a href="/healthz" target="_blank" rel="noreferrer">/healthz</a></li>
+      <li><a href="/readyz" target="_blank" rel="noreferrer">/readyz</a></li>
+      <li><a href="/info" target="_blank" rel="noreferrer">/info</a></li>
+      <li><a href="/docs" target="_blank" rel="noreferrer">/docs (Swagger)</a></li>
+    </ul>
+    <p class="muted small">
+      Note: API endpoints remain protected via <code>X-API-Key</code>. This UI is for demo only.
+    </p>
+  </aside>
+</div>
+
+{% endblock %}
+
