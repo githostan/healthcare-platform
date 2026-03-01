@@ -25,8 +25,18 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 import time
 import json
 import logging
+from fastapi.staticfiles import StaticFiles
+
 
 from app.auth import require_api_key
+
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from starlette.status import HTTP_303_SEE_OTHER
+from fastapi import Form
+
+
+templates = Jinja2Templates(directory="templates")
 
 
 # ---- logging setup (structured JSON to stdout) ----
@@ -88,6 +98,9 @@ app = FastAPI(
     swagger_ui_parameters={"persistAuthorization": True},
 )
 
+# ---- Static assets (Demo UI CSS) ----
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 # ---- Auth (API Key) ----
 # NOTE: Use Security(...) so FastAPI auto-generates the OpenAPI security scheme
@@ -102,12 +115,14 @@ AUTH_RESPONSES = {
 # ---- models ----
 class AppointmentCreate(BaseModel):
     patient_id: str = Field(min_length=1)
+    patient_name: str = Field(min_length=1)
     clinic: str = Field(min_length=1)
     appointment_time: datetime
 
 
 class AppointmentUpdate(BaseModel):
     patient_id: str = Field(min_length=1)
+    patient_name: str = Field(min_length=1)
     clinic: str = Field(min_length=1)
     appointment_time: datetime
 
@@ -115,6 +130,7 @@ class AppointmentUpdate(BaseModel):
 class Appointment(BaseModel):
     id: str
     patient_id: str
+    patient_name: str
     clinic: str
     appointment_time: datetime
     status: Literal["BOOKED", "CANCELLED"] = "BOOKED"
@@ -251,6 +267,7 @@ def create_appointment(payload: AppointmentCreate):
     appt = Appointment(
         id=str(uuid4()),
         patient_id=payload.patient_id,
+        patient_name=payload.patient_name,
         clinic=payload.clinic,
         appointment_time=payload.appointment_time,
         status="BOOKED",
@@ -288,6 +305,7 @@ def update_appointment(appointment_id: str, payload: AppointmentUpdate):
     updated = Appointment(
         id=existing.id,
         patient_id=payload.patient_id,
+        patient_name=payload.patient_name,
         clinic=payload.clinic,
         appointment_time=payload.appointment_time,
         status=existing.status,  # keep status unless cancelled via PATCH endpoint
@@ -373,3 +391,131 @@ def custom_openapi():
 
 
 app.openapi = custom_openapi
+
+# =============================================================================
+# Demo UI (Server-rendered HTML)
+# =============================================================================
+# Purpose:
+# - Provide a lightweight "Demo UI" for humans to interact with the service
+#   without introducing a separate frontend stack (no React/Node/build step).
+#
+# Design:
+# - UI routes are intentionally NOT API-key protected.
+# - API routes (/api/v1/*) remain protected via X-API-Key.
+# - UI handlers reuse the same validation + data layer used by the API.
+#
+# Notes:
+# - Templates live in ./templates
+# - Static assets (CSS) live in ./static and are served at /static/*
+# =============================================================================
+
+@app.get("/ui", response_class=HTMLResponse, tags=["UI"])
+def ui_home(request: Request):
+    """
+    Demo UI landing page (dashboard).
+    Shows basic service info + quick links to actions and docs.
+    """
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "service": "appointment-api",
+            "version": app.version,
+            "count": len(_DB),
+            "title": "Dashboard — Demo UI",
+        },
+    )
+
+
+@app.get("/ui/appointments", response_class=HTMLResponse, tags=["UI"])
+def ui_list_appointments(
+    request: Request,
+    patient_id: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    # Normalize empty inputs from HTML forms
+    patient_id = (patient_id or "").strip() or None
+    status = (status or "").strip() or None
+
+    # Validate allowed status values if provided
+    if status and status not in {"BOOKED", "CANCELLED"}:
+        raise HTTPException(status_code=422, detail="status must be BOOKED or CANCELLED")
+
+    items = _DB
+    if patient_id:
+        items = [a for a in items if a.patient_id == patient_id]
+    if status:
+        items = [a for a in items if a.status == status]
+
+    return templates.TemplateResponse(
+        "appointments.html",
+        {
+            "request": request,
+            "items": items,
+            "patient_id": patient_id or "",
+            "status": status or "",
+            "title": "Appointments — Demo UI",
+        },
+    )
+
+@app.get("/ui/appointments/new", response_class=HTMLResponse, tags=["UI"])
+def ui_new_appointment(request: Request):
+    """
+    Demo UI form page for creating a new appointment.
+    """
+    return templates.TemplateResponse(
+        "new_appointment.html",
+        {"request": request, "title": "New Appointment — Demo UI"},
+    )
+
+@app.post("/ui/appointments", tags=["UI"])
+def ui_create_appointment(
+    patient_id: str = Form(..., min_length=1),
+    patient_name: str = Form(..., min_length=1),
+    clinic: str = Form(..., min_length=1),
+    appointment_time: str = Form(...),
+):
+    try:
+        ts = appointment_time.strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(ts)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="appointment_time must be ISO8601, e.g. 2026-03-01T12:00:00Z",
+        )
+
+    _require_future(dt)
+
+    appt = Appointment(
+        id=str(uuid4()),
+        patient_id=patient_id,
+        patient_name=patient_name,
+        clinic=clinic,
+        appointment_time=dt,
+        status="BOOKED",
+    )
+    _DB.append(appt)
+
+    return RedirectResponse(url="/ui/appointments", status_code=HTTP_303_SEE_OTHER)
+
+
+
+@app.post("/ui/appointments/{appointment_id}/cancel", tags=["UI"])
+def ui_cancel_appointment(appointment_id: str):
+    """
+    Demo UI action: cancel an appointment (idempotent).
+    Reuses the existing API handler logic.
+    """
+    cancel_appointment(appointment_id)
+    return RedirectResponse(url="/ui/appointments", status_code=HTTP_303_SEE_OTHER)
+
+
+@app.post("/ui/appointments/{appointment_id}/delete", tags=["UI"])
+def ui_delete_appointment(appointment_id: str):
+    """
+    Demo UI action: delete an appointment.
+    Reuses the existing API handler logic.
+    """
+    delete_appointment(appointment_id)
+    return RedirectResponse(url="/ui/appointments", status_code=HTTP_303_SEE_OTHER)
+
