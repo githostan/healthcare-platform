@@ -1,0 +1,44 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or "Appointment API — Demo UI" }}</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+
+  <body>
+    <header class="navbar">
+      <div class="nav-inner">
+        <div class="brand">
+          <span class="brand-mark">🗓️</span>
+          <div class="brand-text">
+            <div class="brand-title">Appointment API</div>
+            <div class="brand-subtitle">Demo UI</div>
+          </div>
+        </div>
+
+        <nav class="nav-links">
+          <a class="nav-link" href="/ui">Dashboard</a>
+          <a class="nav-link" href="/ui/appointments">Appointments</a>
+          <a class="nav-link nav-link-primary" href="/ui/appointments/new">New</a>
+          <a class="nav-link" href="/docs" target="_blank" rel="noreferrer">Docs</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page">
+      <div class="container">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <span>Appointment API — Demo UI</span>
+        <span class="muted">Built for demo + platform learning</span>
+      </div>
+    </footer>
+  </body>
+</html>
