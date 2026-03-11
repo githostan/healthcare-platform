@@ -15,13 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: checkout code repository   
+    - name: Checkout code   
       uses: actions/checkout@v4
 
-    - name: set up python
+    - name: Set up python
       uses: actions/setup-python@v4
       with:
-        python-version: 3.12.3
+        python-version: "3.12.3"
     
     - name: Install dependencies
       run: |
@@ -29,26 +29,32 @@ jobs:
         pip install -r requirements.txt
         pip install ruff
 
-    - name: Run lint
-      run: ruff
+    - name: Run Ruff with Fix
+      run: |
+        ruff check . --fix
+
+    - name: Check formatting
+      run: |
+        ruff format . --check
+    #   continue-on-error: true
 
   test:
     runs-on: ubuntu-latest
 
     steps:
-    - name: checkout core repository
+    - name: Checkout core repository
       uses: actions/checkout@v4
 
-    - name: set up pyhton
+    - name: Set up pyhton
       uses: actions/setup-python@v4
       with:
-        python-version: 3.12.3
+        python-version: "3.12.3"
 
-    - name: INstall dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest
 
-    - name: Run test
+    - name: Test with pytest
       run: pytest
