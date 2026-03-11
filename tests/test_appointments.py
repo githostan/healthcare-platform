@@ -3,7 +3,9 @@
 
 """Tests for appointment CRUD operations."""
 
-def test_create_appointment(client, api_key_headers):
+API_KEY = {"X-API-Key": "dev-secret-key"}
+
+def test_create_appointment(client):
     """Test creating a new appointment with valid data."""
     payload = {
         "patient_id": "12345",
@@ -17,7 +19,7 @@ def test_create_appointment(client, api_key_headers):
     assert response.status_code == 201
 
     data = response.json()
-    
+
     assert data["patient_id"] == "12345"
     assert data["patient_name"] == "Test User"
     assert data["clinic"] == "Cardiology"
