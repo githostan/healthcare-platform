@@ -1,5 +1,5 @@
-
 # smoke testing
+
 
 def test_health_smoke(client):
     r = client.get("/healthz")

@@ -1,9 +1,9 @@
-
 # these validate the actual API features: creating, retrieving, cancelling, deleting appointments
 
 """Tests for appointment CRUD operations."""
 
 API_KEY = {"X-API-Key": "dev-secret-key"}
+
 
 def test_create_appointment(client):
     """Test creating a new appointment with valid data."""
@@ -11,7 +11,7 @@ def test_create_appointment(client):
         "patient_id": "12345",
         "patient_name": "Test User",
         "clinic": "Cardiology",
-        "appointment_time": "2030-01-01T10:00:00Z"
+        "appointment_time": "2030-01-01T10:00:00Z",
     }
 
     response = client.post("/api/v1/appointments", json=payload, headers=API_KEY)
