@@ -1,60 +1,58 @@
 
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
 name: Test and Build
 
 on:
   push:
-    branches: [ "feature/ci-test" ]
+    branches: ["feature/ci-test"]
   pull_request:
-    branches: [ "feature/ci-test" ]
-    
+    branches: ["feature/ci-test"]
+
 jobs:
+
   lint:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code   
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.12.3"
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install ruff
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Run Ruff with Fix
-      run: |
-        ruff check . --fix
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
 
-    - name: Check formatting
-      run: |
-        ruff format . --check
-    #   continue-on-error: true
+      - name: Run Ruff
+        run: ruff check . --fix
+
+      - name: Check formatting
+        run: ruff format . --check
+        continue-on-error: true
+
 
   test:
+    needs: lint
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout core repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up pyhton
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.12.3"
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
 
-    - name: Test with pytest
-      run: pytest
+      - name: Run tests
+        run: pytest
