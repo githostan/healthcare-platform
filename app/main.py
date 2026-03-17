@@ -1,4 +1,3 @@
-
 """
 Appointment API — FastAPI service providing appointment management with
 structured logging, Prometheus metrics, API-key authentication, and
@@ -56,7 +55,9 @@ def _require_future(dt: datetime) -> None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     if dt <= _utcnow():
-        raise HTTPException(status_code=422, detail="appointment_time must be in the future")
+        raise HTTPException(
+            status_code=422, detail="appointment_time must be in the future"
+        )
 
 
 def _log(event: dict) -> None:
@@ -65,15 +66,11 @@ def _log(event: dict) -> None:
 
 # ---- Prometheus metrics ----
 REQUEST_COUNT = Counter(
-    "http_requests_total",
-    "Total HTTP requests",
-    ["method", "path", "status"]
+    "http_requests_total", "Total HTTP requests", ["method", "path", "status"]
 )
 
 REQUEST_LATENCY = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request latency",
-    ["path"]
+    "http_request_duration_seconds", "HTTP request latency", ["path"]
 )
 
 # ---- OpenAPI tags ----
@@ -89,11 +86,9 @@ app = FastAPI(
     title="Appointment API",
     version="0.2.0",
     openapi_tags=tags_metadata,
-
     # NOTE: Swagger UI can be flaky with OpenAPI 3.1 in some bundled versions.
     # For maximum compatibility (and to avoid a blank /docs page), publish as OAS 3.0.3.
     openapi_version="3.0.3",
-
     # NOTE: This keeps the API key in Swagger UI once you click "Authorize".
     swagger_ui_parameters={"persistAuthorization": True},
 )
@@ -202,14 +197,10 @@ async def metrics_middleware(request: Request, call_next):
     duration = time.time() - start_time
 
     REQUEST_COUNT.labels(
-        method=request.method,
-        path=request.url.path,
-        status=response.status_code
+        method=request.method, path=request.url.path, status=response.status_code
     ).inc()
 
-    REQUEST_LATENCY.labels(
-        path=request.url.path
-    ).observe(duration)
+    REQUEST_LATENCY.labels(path=request.url.path).observe(duration)
 
     return response
 
@@ -409,6 +400,7 @@ app.openapi = custom_openapi
 # - Static assets (CSS) live in ./static and are served at /static/*
 # =============================================================================
 
+
 @app.get("/ui", response_class=HTMLResponse, tags=["UI"])
 def ui_home(request: Request):
     """
@@ -439,7 +431,9 @@ def ui_list_appointments(
 
     # Validate allowed status values if provided
     if status and status not in {"BOOKED", "CANCELLED"}:
-        raise HTTPException(status_code=422, detail="status must be BOOKED or CANCELLED")
+        raise HTTPException(
+            status_code=422, detail="status must be BOOKED or CANCELLED"
+        )
 
     items = _DB
     if patient_id:
@@ -458,6 +452,7 @@ def ui_list_appointments(
         },
     )
 
+
 @app.get("/ui/appointments/new", response_class=HTMLResponse, tags=["UI"])
 def ui_new_appointment(request: Request):
     """
@@ -467,6 +462,7 @@ def ui_new_appointment(request: Request):
         "new_appointment.html",
         {"request": request, "title": "New Appointment — Demo UI"},
     )
+
 
 @app.post("/ui/appointments", tags=["UI"])
 def ui_create_appointment(
@@ -499,7 +495,6 @@ def ui_create_appointment(
     return RedirectResponse(url="/ui/appointments", status_code=HTTP_303_SEE_OTHER)
 
 
-
 @app.post("/ui/appointments/{appointment_id}/cancel", tags=["UI"])
 def ui_cancel_appointment(appointment_id: str):
     """
@@ -518,4 +513,3 @@ def ui_delete_appointment(appointment_id: str):
     """
     delete_appointment(appointment_id)
     return RedirectResponse(url="/ui/appointments", status_code=HTTP_303_SEE_OTHER)
-

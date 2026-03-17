@@ -1,9 +1,9 @@
-
 import os
 from fastapi import Security, HTTPException
 from fastapi.security import APIKeyHeader
 
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
 
 def require_api_key(api_key: str = Security(API_KEY_HEADER)) -> None:
     expected = os.getenv("APPOINTMENT_API_KEY", "dev-secret-key")
