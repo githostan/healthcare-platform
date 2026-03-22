@@ -1,0 +1,56 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appointment-service
+  namespace: appointment-dev
+  labels:
+    app: appointment-service
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: appointment-service
+
+  template:
+    metadata:
+      labels:
+        app: appointment-service
+
+    spec:
+      containers:
+        - name: appointment-service
+          image: ghcr.io/githostan/appointment-service:sha-07a4877
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+
+          env:
+            - name: APPOINTMENT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: appointment-service-secret
+                  key: APPOINTMENT_API_KEY
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
