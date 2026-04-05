@@ -1,0 +1,78 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appointment-service
+  namespace: appointment-dev
+  labels:
+    app: appointment-service
+
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: appointment-service
+
+  template:
+    metadata:
+      labels:
+        app: appointment-service
+
+    spec:
+      containers:
+        - name: appointment-service
+          image: ghcr.io/githostan/appointment-service:sha-07a4877
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000                       # container port
+
+          env:
+            - name: APPOINTMENT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: appointment-service-secret
+                  key: APPOINTMENT_API_KEY
+
+          readinessProbe:                                            # is the pod ready to serve/receive traffic? (send traffic only if ready)
+            httpGet:
+              path: /readyz                                          # readyz      
+              port: 8000
+            initialDelaySeconds: 5                                   # the number of seconds k8s waits after the container starts before performing the first probe (give your app time to start-up)
+            periodSeconds: 10                                        # how ofter k8s repeats the probe after the first check (determines the pod polling frequency)
+            # timeoutSeconds: 1                                         
+
+          livenessProbe:                                             # is the pod alive? (restart if not)
+            httpGet:
+              path: /healthz                                         # healthz
+              port: 8000
+            initialDelaySeconds: 10       
+            periodSeconds: 15             
+            # timeoutSeconds: 1
+            # failureThreshold: 1
+
+          resources:
+            requests:
+              cpu: "25m"                                            # "100m"     millicores
+              memory: "64Mi"                                        # "128Mi"    millibytes
+            limits:
+              cpu: "200m"         # cpu can burst                   # "300m"
+              memory: "128Mi"  
+                                                   # "256Mi"
+
+
+
+          # readinessProbe:                                            
+          #     path: /slow                                              
+          #     port: 8000
+          #   initialDelaySeconds: 0                                   
+          #   periodSeconds: 2                                      
+          #   timeoutSeconds: 1                                         
+
+          # livenessProbe:                                            
+          #   httpGet:
+          #     path: /fail                                       
+          #     port: 8000
+          #   initialDelaySeconds: 0      
+          #   periodSeconds: 2            
+          #   timeoutSeconds: 1
+          #   failureThreshold: 1

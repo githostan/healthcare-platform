@@ -48,3 +48,9 @@ htmlcov/
 # Docker (optional — only if needed)
 # ============================
 *.tar
+
+# ============================
+# K8s
+# ============================
+k8s/base/secret.yml
+k8s/base/secret.yaml
