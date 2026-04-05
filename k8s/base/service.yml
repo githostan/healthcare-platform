@@ -1,3 +1,15 @@
+# Service Type Options:
+# ClusterIP (Default) - Internal only, no external access
+# NodePort            - External access via Node IP + static port (30000-32767)
+# LoadBalancer        - External access via cloud provider load balancer
+# Ingress             - External access via HTTP/S routing rules (not a Service type, but preferred for production)
+
+# Traffic flow:
+# External: Node IP:30800 → Service:80 → Pod:8000
+# Internal: ClusterIP (10.43.x.x):80 → Pod:8000
+
+# Use case: Dev/testing external access
+# Production: Use LoadBalancer or Ingress instead of NodePort
 
 apiVersion: v1
 kind: Service
@@ -5,10 +17,18 @@ metadata:
   name: appointment-service
   namespace: appointment-dev
 spec:
+  type: NodePort                      # Creates ClusterIP + opens a static port on ALL nodes
   selector:
-    app: appointment-service
+    app: appointment-service          # Must match the pod label in deployment.yml — this is how the Service discovers its pods
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 8000
-      # nodePort: 3080
+      port: 80                        # ClusterIP port — exposed by the Service internally, used by other pods and ingress/api-gateway
+      targetPort: 8888               # Must match containerPort in deployment.yml — this is where the Service forwards traffic to on the pod
+      nodePort: 30800                 # Externally accessible port on every node (valid range: 30000-32767)
+
+
+# service receives traffic on- Port 80
+# service forwards to- targetport: 8000
+# Pod receives traffic on- containerPort: 8000      (defined inside deployment.yml file)
+
+# note - your app (e.g appointment-service) must be listening on whatever target points to
