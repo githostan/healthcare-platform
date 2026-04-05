@@ -1,83 +1,316 @@
 
+# =========================================================
+# CI Build and Publish Pipeline
+# =========================================================
+# Purpose:
+# - Run linting and tests for application changes
+# - Validate Kubernetes manifests for k8s-only changes
+# - Build and optionally publish Docker images to GHCR
+#
+# Why this workflow exists:
+# - Prevent unnecessary image builds when only k8s manifests change
+# - Keep app validation (lint/test/build) separate from k8s validation
+# - Ensure Docker images are only built when app-related files change
+#
+# Trigger behavior:
+# - Runs on pushes to develop and main
+# - Runs on pull requests targeting develop and main
+# =========================================================
+
 name: CI Build and Publish Pipeline
 
 on:
   push:
-    branches: [ "develop", "main" ]
+    branches: ["develop", "main"]
   pull_request:
-    branches: [ "develop", "main" ]
+    branches: ["develop", "main"]
 
 jobs:
+  # =======================================================
+  # JOB 1: Detect what changed
+  # =======================================================
+  # This job compares the "before" and "after" commits and
+  # decides whether:
+  #
+  # - app_changed = true
+  #   Meaning app code / tests / Dockerfile / requirements /
+  #   workflow files changed, so lint/test/build should run.
+  #
+  # - k8s_changed = true
+  #   Meaning files under k8s/ changed, so k8s validation
+  #   should run.
+  #
+  # This is an optimization job. It avoids wasting CI time
+  # when, for example, only Kubernetes YAML files changed
+  # and there is no need to lint/test/build the Python app.
+  # =======================================================
+  changes:
+    runs-on: ubuntu-latest
 
+    # Outputs from this job are passed to later jobs.
+    # Other jobs can read these values using:
+    # needs.changes.outputs.app_changed
+    # needs.changes.outputs.k8s_changed
+    outputs:
+      app_changed: ${{ steps.filter.outputs.app_changed }}
+      k8s_changed: ${{ steps.filter.outputs.k8s_changed }}
+
+    steps:
+      # -----------------------------------------------
+      # Step: Checkout code
+      # -----------------------------------------------
+      # fetch-depth: 0 means fetch full git history.
+      # This is important because we need git diff to
+      # compare commits properly.
+      # -----------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -----------------------------------------------
+      # Step: Detect changed files
+      # -----------------------------------------------
+      # This Bash block:
+      #
+      # 1. Figures out which two commits should be compared
+      #    - For pull requests:
+      #      compare base branch SHA vs PR head SHA
+      #    - For normal push events:
+      #      compare previous SHA vs current SHA
+      #
+      # 2. Runs git diff --name-only to list changed files
+      #
+      # 3. Sets flags:
+      #    APP_CHANGED=true if app-related files changed
+      #    K8S_CHANGED=true if files under k8s/ changed
+      #
+      # 4. Writes those flags into $GITHUB_OUTPUT so later
+      #    jobs can use them.
+      # -----------------------------------------------
+      - name: Detect changed files
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Decide which commits to compare depending on event type.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          echo "Comparing: $BASE -> $HEAD"
+
+          # List changed files between BASE and HEAD.
+          # '|| true' prevents the script from failing if git diff
+          # returns a non-zero exit code for edge cases.
+          CHANGED_FILES="$(git diff --name-only "$BASE" "$HEAD" || true)"
+
+          echo "$CHANGED_FILES"
+
+          APP_CHANGED=false
+          K8S_CHANGED=false
+
+          # If any app-related files changed, mark APP_CHANGED=true.
+          if echo "$CHANGED_FILES" | grep -E '^(app/|tests/|Dockerfile$|requirements\.txt$|requirements-dev\.txt$|\.github/workflows/)' >/dev/null; then
+            APP_CHANGED=true
+          fi
+
+          # If any files inside k8s/ changed, mark K8S_CHANGED=true.
+          if echo "$CHANGED_FILES" | grep -E '^(k8s/)' >/dev/null; then
+            K8S_CHANGED=true
+          fi
+
+          # Export values so other jobs can read them.
+          echo "app_changed=$APP_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "k8s_changed=$K8S_CHANGED" >> "$GITHUB_OUTPUT"
+
+  # =======================================================
+  # JOB 2: Lint Python code
+  # =======================================================
+  # Runs only if app-related files changed.
+  #
+  # Purpose:
+  # - Ensure Python code style and lint rules pass
+  # - Catch basic quality issues before tests/build
+  #
+  # Why this job runs before tests:
+  # - Linting is fast
+  # - No point running tests if code quality already fails
+  # =======================================================
   lint:
+    needs: changes
+    if: ${{ needs.changes.outputs.app_changed == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout repository contents
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Set up Python runtime for this job
       - name: Set up python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # Install both runtime and development dependencies
+      # so linting tools are available.
       - name: Install dev dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
+      # Run Ruff lint checks
       - name: Run Ruff lint checks
         run: ruff check .
-        # run: ruff check . --fix
 
+      # Verify formatting is correct
       - name: Check formatting
         run: ruff format . --check
-        # run: ruff format .
-        # continue-on-error: true
 
-
+  # =======================================================
+  # JOB 3: Run tests
+  # =======================================================
+  # Runs only if app-related files changed.
+  # Also depends on lint passing first.
+  #
+  # Purpose:
+  # - Validate the app behaves correctly
+  # - Confirm current code does not break basic API behavior
+  #
+  # Why depends on lint:
+  # - If lint fails, stop early and save CI time
+  # =======================================================
   test:
-    needs: lint
+    needs: [changes, lint]
+    if: ${{ needs.changes.outputs.app_changed == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Set up Python
       - name: Set up python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # Install app + dev dependencies
       - name: Install dev dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-          
 
+      # Run pytest
+      #
+      # PYTHONPATH=. allows imports like "from app.main import app"
+      # to work in CI.
+      #
+      # APPOINTMENT_API_KEY is provided via GitHub Secrets so tests
+      # can reference the expected API key if needed.
       - name: Run tests
         env:
           APPOINTMENT_API_KEY: ${{ secrets.APPOINTMENT_API_KEY }}
           PYTHONPATH: .
         run: pytest -q
 
-  build: 
-    needs: test
+  # =======================================================
+  # JOB 4: Validate Kubernetes manifests
+  # =======================================================
+  # Runs only if k8s-related files changed.
+  #
+  # Purpose:
+  # - Basic sanity check that required Kubernetes manifest files exist
+  #
+  # Note:
+  # - This is a lightweight validation, not a full schema validation
+  # - Later you could improve this with kubeconform, kubectl apply
+  #   --dry-run, or other Kubernetes validation tools
+  # =======================================================
+  k8s-validate:
+    needs: changes
+    if: ${{ needs.changes.outputs.k8s_changed == 'true' }}
     runs-on: ubuntu-latest
-
-    permissions: 
-      contents: read
-      packages: write    
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Simple file existence checks
+      - name: Validate Kubernetes manifests
+        run: |
+          test -f k8s/base/namespace.yml
+          test -f k8s/base/deployment.yml
+          test -f k8s/base/service.yml
+          test -f k8s/base/secret.example.yml
+
+  # =======================================================
+  # JOB 5: Build and optionally push Docker image
+  # =======================================================
+  # Runs only if app-related files changed.
+  # Depends on:
+  # - changes
+  # - lint
+  # - test
+  #
+  # Purpose:
+  # - Build Docker image for Appointment Service
+  # - Push image to GHCR only on push events
+  #
+  # Why push only on push and not PR:
+  # - PRs should validate only
+  # - Avoid polluting the registry with preview images from every PR
+  # =======================================================
+  build:
+    needs: [changes, lint, test]
+    if: ${{ needs.changes.outputs.app_changed == 'true' }}
+    runs-on: ubuntu-latest
+
+    # Required permissions:
+    # - contents: read   -> read repository content
+    # - packages: write -> push to GHCR
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Checkout code so Docker build can access the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Docker Buildx
+      #
+      # Buildx enables modern Docker builds and advanced features
+      # like multi-platform builds and caching.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
+
+      # -----------------------------------------------
+      # Extract Docker metadata
+      # -----------------------------------------------
+      # This step automatically generates:
+      # - image tags
+      # - OCI labels
+      #
+      # Tag strategy here:
+      # - develop branch -> tag image as "dev"
+      # - main branch    -> tag image as "latest"
+      # - every build    -> tag image as "sha-<shortsha>"
+      #
+      # This is useful because:
+      # - "dev" gives you a moving develop image
+      # - "latest" gives you the current main image
+      # - "sha-..." gives you an immutable build reference
+      # -----------------------------------------------
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v6
@@ -93,15 +326,35 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
+      # -----------------------------------------------
+      # Login to GHCR
+      # -----------------------------------------------
+      # Only log in on push events, because only push events
+      # should publish images.
+      #
+      # Uses built-in GITHUB_TOKEN instead of a PAT.
+      # This is the recommended secure approach for pushing
+      # to GitHub Container Registry from GitHub Actions.
+      # -----------------------------------------------
       - name: Login to GitHub Container Registry
-        if: github.event_name == 'push'
+        if: ${{ github.event_name == 'push' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and optionally Push Docker Image
+      # -----------------------------------------------
+      # Build and optionally push Docker image
+      # -----------------------------------------------
+      # push: true  on normal push events
+      # push: false on pull requests
+      #
+      # So:
+      # - PR = build validation only
+      # - push to develop/main = build and publish
+      # -----------------------------------------------
+      - name: Build and optionally push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -109,4 +362,122 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+
+
+
+
+
+
+
+# name: CI Build and Publish Pipeline
+
+# on:
+#   push:
+#     branches: [ "develop", "main" ]
+#   pull_request:
+#     branches: [ "develop", "main" ]
+
+# jobs:
+
+#   lint:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       - name: Set up python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.12"
+
+#       - name: Install dev dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install -r requirements.txt
+#           pip install -r requirements-dev.txt
+
+#       - name: Run Ruff lint checks
+#         run: ruff check .
+#         # run: ruff check . --fix
+
+#       - name: Check formatting
+#         run: ruff format . --check
+#         # run: ruff format .
+#         # continue-on-error: true
+
+
+#   test:
+#     needs: lint
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+
+#       - name: Set up python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.12"
+
+#       - name: Install dev dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install -r requirements.txt
+#           pip install -r requirements-dev.txt
+          
+
+#       - name: Run tests
+#         env:
+#           APPOINTMENT_API_KEY: ${{ secrets.APPOINTMENT_API_KEY }}
+#           PYTHONPATH: .
+#         run: pytest -q
+
+#   build: 
+#     needs: test
+#     runs-on: ubuntu-latest
+
+#     permissions: 
+#       contents: read
+#       packages: write    
+
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+        
+#       - name: Extract Docker metadata
+#         id: meta
+#         uses: docker/metadata-action@v6
+#         with:
+#           images: ghcr.io/githostan/appointment-service
+#           tags: |
+#             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/develop' }}
+#             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+#             type=sha,prefix=sha-
+#           labels: |
+#             org.opencontainers.image.title=appointment-service
+#             org.opencontainers.image.description=Appointment service API
+#             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+#             org.opencontainers.image.revision=${{ github.sha }}
+
+#       - name: Login to GitHub Container Registry
+#         if: github.event_name == 'push'
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ghcr.io
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.GITHUB_TOKEN }}
+
+#       - name: Build and optionally Push Docker Image
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: .
+#           file: ./Dockerfile
+#           push: ${{ github.event_name == 'push' }}
+#           tags: ${{ steps.meta.outputs.tags }}
+#           labels: ${{ steps.meta.outputs.labels }}
       
