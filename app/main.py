@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import time
 import json
+import os
 import logging
 from fastapi.staticfiles import StaticFiles
 
@@ -133,6 +134,9 @@ class Appointment(BaseModel):
 
 _DB: List[Appointment] = []
 
+# Startup probe state
+_STARTUP_COMPLETE = False
+
 
 def _find_index_by_id(appt_id: str) -> int:
     for i, a in enumerate(_DB):
@@ -205,6 +209,21 @@ async def metrics_middleware(request: Request, call_next):
     return response
 
 
+# ---- startup lifecycle ----
+@app.on_event("startup")
+async def on_startup():
+    """
+    Application startup hook.
+
+    Future use:
+    - initialize database connections
+    - warm caches
+    - verify external dependencies
+    """
+    global _STARTUP_COMPLETE
+    _STARTUP_COMPLETE = True
+
+
 # ---- endpoints ----
 @app.get("/healthz", tags=["Health"])
 def healthz():
@@ -214,6 +233,19 @@ def healthz():
 @app.get("/readyz", tags=["Health"])
 def readyz():
     return {"status": "ready"}
+
+
+@app.get("/startupz", tags=["Health"])
+def startupz():
+    """
+    Startup probe endpoint.
+
+    Used by Kubernetes startupProbe to determine whether the application
+    has completed startup successfully.
+    """
+    if not _STARTUP_COMPLETE:
+        raise HTTPException(status_code=503, detail="Application startup not complete")
+    return {"status": "started"}
 
 
 @app.get("/info", tags=["Meta"])
@@ -513,3 +545,43 @@ def ui_delete_appointment(appointment_id: str):
     """
     delete_appointment(appointment_id)
     return RedirectResponse(url="/ui/appointments", status_code=HTTP_303_SEE_OTHER)
+
+
+# ---- ######################################### ----
+# ---- ######################################### ----
+
+# ---- Lab / runtime testing feature flag ----
+def _lab_endpoints_enabled() -> bool:
+    return os.getenv("ENABLE_LAB_ENDPOINTS", "false").lower() == "true"
+
+
+# ---- Lab endpoints (dev-only learning routes) ----
+# NOTE:
+# These routes are intentionally for runtime testing and troubleshooting drills.
+# They should only be enabled in development-style environments by setting:
+# ENABLE_LAB_ENDPOINTS=true
+
+@app.get("/lab/slow", tags=["Lab"])
+def lab_slow(seconds: int = Query(5, ge=1, le=15)):
+    # Guardrail: keep this route disabled unless explicitly enabled
+    if not _lab_endpoints_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Simulate bounded application latency
+    time.sleep(seconds)
+
+    return {
+        "status": "ok",
+        "mode": "slow",
+        "slept_seconds": seconds,
+    }
+
+
+@app.get("/lab/fail", tags=["Lab"])
+def lab_fail():
+    # Guardrail: keep this route disabled unless explicitly enabled
+    if not _lab_endpoints_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Simulate a deliberate application failure
+    raise HTTPException(status_code=500, detail="Deliberate lab failure")
