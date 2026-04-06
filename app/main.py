@@ -550,6 +550,7 @@ def ui_delete_appointment(appointment_id: str):
 # ---- ######################################### ----
 # ---- ######################################### ----
 
+
 # ---- Lab / runtime testing feature flag ----
 def _lab_endpoints_enabled() -> bool:
     return os.getenv("ENABLE_LAB_ENDPOINTS", "false").lower() == "true"
@@ -560,6 +561,7 @@ def _lab_endpoints_enabled() -> bool:
 # These routes are intentionally for runtime testing and troubleshooting drills.
 # They should only be enabled in development-style environments by setting:
 # ENABLE_LAB_ENDPOINTS=true
+
 
 @app.get("/lab/slow", tags=["Lab"])
 def lab_slow(seconds: int = Query(5, ge=1, le=15)):
