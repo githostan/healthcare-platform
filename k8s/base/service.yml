@@ -19,11 +19,11 @@ metadata:
 spec:
   type: NodePort                      # Creates ClusterIP + opens a static port on ALL nodes
   selector:
-    app: appointment-service          # Must match the pod label in deployment.yml — this is how the Service discovers its pods
+    app: appointment-service      # Must match the pod label in deployment.yml — this is how the Service discovers its pods
   ports:
     - protocol: TCP
-      port: 80                        # ClusterIP port — exposed by the Service internally, used by other pods and ingress/api-gateway
-      targetPort: 8888               # Must match containerPort in deployment.yml — this is where the Service forwards traffic to on the pod
+      port: 80                       # ClusterIP port — exposed by the Service internally, used by other pods and ingress/api-gateway
+      targetPort: 8000            # Must match containerPort in deployment.yml — this is where the Service forwards traffic to on the pod
       nodePort: 30800                 # Externally accessible port on every node (valid range: 30000-32767)
 
 
