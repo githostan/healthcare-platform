@@ -13,30 +13,33 @@ Features:
 - OpenAPI tags for clean grouping in Swagger UI
 """
 
-from fastapi import FastAPI, HTTPException, Query, Request, Security
-from fastapi.responses import Response
-from fastapi.openapi.utils import get_openapi
-from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
-from uuid import uuid4
-from datetime import datetime, timezone
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-import time
 import json
-import os
 import logging
-from fastapi.staticfiles import StaticFiles
+import os
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import List, Literal, Optional
+from uuid import uuid4
 
+from fastapi import FastAPI, Form, HTTPException, Query, Request, Security
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from pydantic import BaseModel, Field
+from starlette.status import HTTP_303_SEE_OTHER
 
 from app.auth import require_api_key
 
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from starlette.status import HTTP_303_SEE_OTHER
-from fastapi import Form
 
+# ---- Path setup (repo-structure safe) ----
+BASE_DIR = Path(__file__).resolve().parent.parent
+STATIC_DIR = BASE_DIR / "static"
+TEMPLATES_DIR = BASE_DIR / "templates"
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 # ---- logging setup (structured JSON to stdout) ----
@@ -80,6 +83,8 @@ tags_metadata = [
     {"name": "Meta", "description": "Service metadata"},
     {"name": "Appointments", "description": "Appointment management APIs"},
     {"name": "Observability", "description": "Metrics and monitoring endpoints"},
+    {"name": "UI", "description": "Server-rendered demo UI routes"},
+    {"name": "Lab", "description": "Development-only runtime testing endpoints"},
 ]
 
 # ---- FastAPI app ----
@@ -95,7 +100,7 @@ app = FastAPI(
 )
 
 # ---- Static assets (Demo UI CSS) ----
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ---- Auth (API Key) ----
