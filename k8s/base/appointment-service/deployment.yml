@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: appointment-service
-          image: ghcr.io/githostan/appointment-service:sha-ffe3ece               
+          image: ghcr.io/githostan/healthcare-platform/appointment-service:sha-c48844a               
           imagePullPolicy: IfNotPresent                                           
           ports:
             - containerPort: 8000                       # container port
