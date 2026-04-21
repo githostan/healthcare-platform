@@ -320,20 +320,22 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/githostan/appointment-service
+          images: ghcr.io/githostan/healthcare-platform/appointment-service
           tags: |
             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-
           labels: |
             org.opencontainers.image.title=appointment-service
-            org.opencontainers.image.description=Appointment service API
+            org.opencontainers.image.description=Appointment service (healthcare-platform)
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
       # -----------------------------------------------
       # Login to GHCR
       # -----------------------------------------------
+
       # Only log in on push events, because only push events
       # should publish images.
       #
