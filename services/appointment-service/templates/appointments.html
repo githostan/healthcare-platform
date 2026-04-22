@@ -1,0 +1,92 @@
+
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row-between">
+  <div>
+    <h1 class="h1">Appointments</h1>
+    <p class="muted">Browse, filter, cancel, and delete appointments.</p>
+  </div>
+  <a class="btn btn-primary" href="/ui/appointments/new">New appointment</a>
+</div>
+
+<section class="card">
+  <form class="filters" method="get" action="/ui/appointments">
+    <div class="field">
+      <label class="label">Patient ID</label>
+      <input class="input" name="patient_id" value="{{ patient_id }}" placeholder="e.g. patient-123" />
+    </div>
+
+    <div class="field">
+      <label class="label">Status</label>
+      <select class="input" name="status">
+        <option value="" {% if status == "" %}selected{% endif %}>Any</option>
+        <option value="BOOKED" {% if status == "BOOKED" %}selected{% endif %}>BOOKED</option>
+        <option value="CANCELLED" {% if status == "CANCELLED" %}selected{% endif %}>CANCELLED</option>
+      </select>
+    </div>
+
+    <div class="field field-actions">
+      <button class="btn" type="submit">Apply filters</button>
+      <a class="btn btn-ghost" href="/ui/appointments">Reset</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  {% if items|length == 0 %}
+    <div class="empty">
+      <div class="empty-title">No appointments found</div>
+      <div class="muted">Try changing filters or create a new appointment.</div>
+      <div class="actions">
+        <a class="btn btn-primary" href="/ui/appointments/new">Create appointment</a>
+      </div>
+    </div>
+  {% else %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Patient ID</th>
+            <th>Patient Name</th>
+            <th>Clinic</th>
+            <th>Time (UTC)</th>
+            <th>Status</th>
+            <th class="right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in items %}
+          <tr>
+            <td class="mono">{{ a.id }}</td>
+            <td>{{ a.patient_id }}</td>
+            <td>{{ a.patient_name }}</td>
+            <td>{{ a.clinic }}</td>
+            <td class="mono">{{ a.appointment_time }}</td>
+            <td>
+              <span class="badge {{ 'badge-booked' if a.status == 'BOOKED' else 'badge-cancelled' }}">
+                {{ a.status }}
+              </span>
+            </td>
+            <td class="right">
+              <div class="btn-row">
+                {% if a.status != "CANCELLED" %}
+                <form method="post" action="/ui/appointments/{{ a.id }}/cancel">
+                  <button class="btn btn-warn" type="submit">Cancel</button>
+                </form>
+                {% endif %}
+                <form method="post" action="/ui/appointments/{{ a.id }}/delete">
+                  <button class="btn btn-danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}
