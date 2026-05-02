@@ -6,6 +6,11 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
 
 # Virtual environments
 .venv/
@@ -16,8 +21,8 @@ env/
 # Environment / Secrets
 # ============================
 .env
-.env.*
-*.env
+.env.local
+.env.*.local
 
 # ============================
 # Logs
@@ -36,21 +41,58 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+*.swo
 
 # ============================
 # Coverage / Testing
 # ============================
 .pytest_cache/
+.coverage
+.coverage.*
 coverage.xml
 htmlcov/
 
 # ============================
-# Docker (optional — only if needed)
+# Node / TypeScript
 # ============================
-*.tar
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
 
 # ============================
-# K8s
+# Docker
 # ============================
-k8s/base/secret.yml
-k8s/base/secret.yaml
+*.tar
+*.tar.gz
+
+# ============================
+# K8s Secrets
+# ============================
+**/secret.yml
+**/secret.yaml
+
+# ============================
+# Terraform
+# ============================
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl
+crash.log
+
+# ============================
+# Ansible
+# ============================
+*.retry
+infra/ansible/inventory/hosts
+infra/ansible/vault_password
+
+# ============================
+# Generated / Local Data
+# ============================
+patients.json
+nhs_numbers.txt
+*.zip
