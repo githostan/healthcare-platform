@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Prometheus metrics endpoint (service-level observability)
 # =============================================================================
@@ -22,4 +21,3 @@ router = APIRouter(tags=["Observability"])
 @router.get("/metrics", dependencies=[Security(require_api_key)])
 def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-

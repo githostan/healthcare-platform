@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Patient domain schemas (validation, structure, and API-facing models)
 # =============================================================================
@@ -62,6 +61,7 @@ class PatientBase(BaseModel):
         if value >= date.today():
             raise ValueError("date_of_birth must be in the past")
         return value
+
 
 class PatientCreate(PatientBase):
     status: PatientStatus = "ACTIVE"

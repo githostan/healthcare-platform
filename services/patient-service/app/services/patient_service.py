@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Patient domain service (business logic, validation, audit logging)
 # =============================================================================
@@ -37,7 +36,9 @@ from app.utils.security import fingerprint_api_key
 
 
 class PatientService:
-    def __init__(self, repository: InMemoryPatientRepository, logger: logging.Logger) -> None:
+    def __init__(
+        self, repository: InMemoryPatientRepository, logger: logging.Logger
+    ) -> None:
         self.repository = repository
         self.logger = logger
 
@@ -90,7 +91,9 @@ class PatientService:
 
         if registered_practice_code:
             items = [
-                p for p in items if p.registered_practice_code == registered_practice_code
+                p
+                for p in items
+                if p.registered_practice_code == registered_practice_code
             ]
 
         total = len(items)
