@@ -21,10 +21,11 @@
 name: CI Build and Publish Pipeline
 
 on:
-  push:
-    branches: ["develop", "main"]
-  pull_request:
-    branches: ["develop", "main"]
+  workflow_dispatch:
+  # push:
+  #   branches: ["develop", "main"]
+  # pull_request:
+  #   branches: ["develop", "main"]
 
 jobs:
   # =======================================================
