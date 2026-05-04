@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Patient API routes (production-grade, service-backed implementation)
 # =============================================================================
@@ -35,7 +34,9 @@ def get_service(request: Request) -> PatientService:
     return request.app.state.patient_service  # type: ignore[return-value]
 
 
-@router.get("", response_model=PatientListResponse, dependencies=[Security(require_api_key)])
+@router.get(
+    "", response_model=PatientListResponse, dependencies=[Security(require_api_key)]
+)
 def list_patients(
     status_filter: PatientStatus | None = Query(None, alias="status"),
     registered_practice_code: str | None = Query(None),

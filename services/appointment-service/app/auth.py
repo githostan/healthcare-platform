@@ -1,5 +1,3 @@
-
-
 import os
 import secrets
 
@@ -16,13 +14,11 @@ def require_api_key(api_key: str | None = Security(API_KEY_HEADER)) -> None:
         raise RuntimeError("APPOINTMENT_API_KEY is not configured")
 
     if not api_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing API key"
+        )
 
     if not secrets.compare_digest(api_key, expected):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key")
-
-
-
-
-
-
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key"
+        )

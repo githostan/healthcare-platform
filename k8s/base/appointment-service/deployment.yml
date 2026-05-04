@@ -32,6 +32,8 @@ spec:
                 secretKeyRef:
                   name: appointment-service-secret
                   key: APPOINTMENT_API_KEY
+            - name: ENABLE_LAB_ENDPOINTS
+              value: "true"
 
           readinessProbe:                                            # is the pod ready to serve/receive traffic? (send traffic only if ready)
             httpGet:
@@ -49,10 +51,6 @@ spec:
             periodSeconds: 15             
             # timeoutSeconds: 60
             # failureThreshold: 1
-
-          env:
-            - name: ENABLE_LAB_ENDPOINTS
-              value: "true"
           
           resources:
             requests:

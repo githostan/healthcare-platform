@@ -1,4 +1,3 @@
-
 # =============================================================================
 # NHS number utilities (modulus‑11 validation + unique valid number generation)
 # =============================================================================
@@ -38,7 +37,9 @@ def calculate_nhs_check_digit(first_nine_digits: str) -> int | None:
         return None
 
     weights = [10, 9, 8, 7, 6, 5, 4, 3, 2]
-    total = sum(int(digit) * weight for digit, weight in zip(first_nine_digits, weights))
+    total = sum(
+        int(digit) * weight for digit, weight in zip(first_nine_digits, weights)
+    )
     remainder = total % 11
     check_digit = 11 - remainder
 

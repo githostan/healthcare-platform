@@ -1,4 +1,3 @@
-
 # =============================================================================
 # In‑memory patient repository (temporary persistence layer)
 # =============================================================================
@@ -34,7 +33,9 @@ class InMemoryPatientRepository:
         return self._items.get(patient_id)
 
     def get_by_nhs_number(self, nhs_number: str) -> PatientRecord | None:
-        return next((p for p in self._items.values() if p.nhs_number == nhs_number), None)
+        return next(
+            (p for p in self._items.values() if p.nhs_number == nhs_number), None
+        )
 
     def create(self, payload: PatientCreate) -> PatientRecord:
         now = datetime.now(timezone.utc)
@@ -72,7 +73,9 @@ class InMemoryPatientRepository:
         record.updated_at = datetime.now(timezone.utc)
         return record
 
-    def set_status(self, patient_id: str, status: PatientStatus) -> PatientRecord | None:
+    def set_status(
+        self, patient_id: str, status: PatientStatus
+    ) -> PatientRecord | None:
         record = self._items.get(patient_id)
         if not record:
             return None
