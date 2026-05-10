@@ -90,7 +90,7 @@ jobs:
           ENABLE_SEED_DATA: "false"
           DEFAULT_PAGE_SIZE: "20"
           MAX_PAGE_SIZE: "100"
-          RATE_LIMIT_PER_MINUTE: "1000"
+          RATE_LIMIT_PER_MINUTE: "100"
           PYTHONPATH: services/patient-service
         run: python -m pytest services/patient-service/tests -q
 
