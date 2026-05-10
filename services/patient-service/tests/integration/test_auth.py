@@ -1,4 +1,3 @@
-
 """
 Integration tests for authentication behaviour.
 
@@ -42,4 +41,3 @@ def test_health_endpoints_require_no_auth(client):
     assert client.get("/readyz").status_code == 200
     assert client.get("/startupz").status_code == 200
     assert client.get("/info").status_code == 200
-

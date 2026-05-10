@@ -1,4 +1,3 @@
-
 """
 Unit tests for NHS number utilities.
 
@@ -52,6 +51,3 @@ def test_generate_produces_unique_numbers():
     numbers = {generate_valid_nhs_number() for _ in range(100)}
 
     assert len(numbers) == 100
-
-
-

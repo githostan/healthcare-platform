@@ -1,5 +1,3 @@
-
-
 """
 Shared pytest fixtures for patient-service.
 
@@ -55,7 +53,6 @@ def valid_patient_payload() -> dict:
         "registered_practice_code": "L83120",
         "status": "ACTIVE",
     }
-
 
 
 # import os
