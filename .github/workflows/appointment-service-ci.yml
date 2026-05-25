@@ -220,11 +220,11 @@ jobs:
       # PYTHONPATH points at the service root so imports like
       # "from app.main import app" work in CI.
       #
-      # APPOINTMENT_API_KEY is provided via GitHub Secrets so tests
+      # APPOINTMENT_SERVICE_API_KEY is provided via GitHub Secrets so tests
       # can reference the expected API key if needed.
       - name: Run tests
         env:
-          APPOINTMENT_API_KEY: ${{ secrets.APPOINTMENT_API_KEY }}
+          APPOINTMENT_SERVICE_API_KEY: ${{ secrets.APPOINTMENT_SERVICE_API_KEY }}
           PYTHONPATH: services/appointment-service
         run: python -m pytest services/appointment-service/tests -q
 
@@ -437,7 +437,7 @@ jobs:
 
 #       - name: Run tests
 #         env:
-#           APPOINTMENT_API_KEY: ${{ secrets.APPOINTMENT_API_KEY }}
+#           APPOINTMENT_SERVICE_API_KEY: ${{ secrets.APPOINTMENT_SERVICE_API_KEY }}
 #           PYTHONPATH: .
 #         run: pytest -q
 
