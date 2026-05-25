@@ -220,11 +220,19 @@ jobs:
       # PYTHONPATH points at the service root so imports like
       # "from app.main import app" work in CI.
       #
+<<<<<<< HEAD
       # APPOINTMENT_SERVICE_API_KEY is provided via GitHub Secrets so tests
       # can reference the expected API key if needed.
       - name: Run tests
         env:
           APPOINTMENT_SERVICE_API_KEY: ${{ secrets.APPOINTMENT_SERVICE_API_KEY }}
+=======
+      # APPOINTMENT_API_KEY is provided via GitHub Secrets so tests
+      # can reference the expected API key if needed.
+      - name: Run tests
+        env:
+          APPOINTMENT_API_KEY: ${{ secrets.APPOINTMENT_API_KEY }}
+>>>>>>> origin/main
           PYTHONPATH: services/appointment-service
         run: python -m pytest services/appointment-service/tests -q
 
@@ -253,7 +261,11 @@ jobs:
       # Simple file existence checks
       - name: Validate Kubernetes manifests
         run: |
+<<<<<<< HEAD
           test -f k8s/namespaces/namespace-dev.yml
+=======
+          test -f k8s/base/namespace.yml
+>>>>>>> origin/main
           test -f k8s/base/appointment-service/deployment.yml
           test -f k8s/base/appointment-service/service.yml
           test -f k8s/base/appointment-service/secret.example.yml
@@ -437,7 +449,11 @@ jobs:
 
 #       - name: Run tests
 #         env:
+<<<<<<< HEAD
 #           APPOINTMENT_SERVICE_API_KEY: ${{ secrets.APPOINTMENT_SERVICE_API_KEY }}
+=======
+#           APPOINTMENT_API_KEY: ${{ secrets.APPOINTMENT_API_KEY }}
+>>>>>>> origin/main
 #           PYTHONPATH: .
 #         run: pytest -q
 
