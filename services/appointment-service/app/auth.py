@@ -8,10 +8,10 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def require_api_key(api_key: str | None = Security(API_KEY_HEADER)) -> None:
-    expected = os.getenv("APPOINTMENT_API_KEY")
+    expected = os.getenv("APPOINTMENT_SERVICE_API_KEY")
 
     if not expected:
-        raise RuntimeError("APPOINTMENT_API_KEY is not configured")
+        raise RuntimeError("APPOINTMENT_SERVICE_API_KEY is not configured")
 
     if not api_key:
         raise HTTPException(

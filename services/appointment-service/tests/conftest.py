@@ -9,7 +9,7 @@ from app.main import app, _DB
 @pytest.fixture(autouse=True)
 def set_test_api_key(monkeypatch) -> None:
     """Set a safe test-only API key for all tests."""
-    monkeypatch.setenv("APPOINTMENT_API_KEY", "test-appointment-api-key")
+    monkeypatch.setenv("APPOINTMENT_SERVICE_API_KEY", "test-appointment-api-key")
 
 
 @pytest.fixture(autouse=True)
@@ -27,4 +27,4 @@ def client() -> TestClient:
 @pytest.fixture
 def api_key_headers() -> dict[str, str]:
     """API key header for protected endpoints."""
-    return {"X-API-Key": os.environ["APPOINTMENT_API_KEY"]}
+    return {"X-API-Key": os.environ["APPOINTMENT_SERVICE_API_KEY"]}

@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: appointment-service
-  namespace: appointment-dev
+  namespace: healthcare-dev
   labels:
     app: appointment-service
 
@@ -27,11 +27,11 @@ spec:
             - containerPort: 8000                       # container port
 
           env:
-            - name: APPOINTMENT_API_KEY
+            - name: APPOINTMENT_SERVICE_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: appointment-service-secret
-                  key: APPOINTMENT_API_KEY
+                  key: APPOINTMENT_SERVICE_API_KEY
             - name: ENABLE_LAB_ENDPOINTS
               value: "true"
 
