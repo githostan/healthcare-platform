@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: appointment-service
-  namespace: appointment-dev
+  namespace: healthcare-dev
   labels:
     app: appointment-service
 
