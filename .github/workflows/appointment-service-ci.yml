@@ -253,7 +253,7 @@ jobs:
       # Simple file existence checks
       - name: Validate Kubernetes manifests
         run: |
-          test -f k8s/base/namespace.yml
+          test -f k8s/namespaces/namespace-dev.yml
           test -f k8s/base/appointment-service/deployment.yml
           test -f k8s/base/appointment-service/service.yml
           test -f k8s/base/appointment-service/secret.example.yml
