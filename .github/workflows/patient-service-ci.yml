@@ -1,0 +1,412 @@
+
+name: Patient Service CI Build and Publish Pipeline
+
+on:
+  push:
+    branches: ["develop", "main"]
+    paths:
+      - "services/patient-service/**"
+      - ".github/workflows/patient-service-ci.yml"
+
+  pull_request:
+    branches: ["develop", "main"]
+    paths:
+      - "services/patient-service/**"
+      - ".github/workflows/patient-service-ci.yml"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/patient-service/requirements.txt
+          pip install -r services/patient-service/requirements-dev.txt
+
+      - name: Run Ruff lint checks
+        run: ruff check services/patient-service/
+
+      - name: Check formatting
+        run: ruff format services/patient-service/ --check
+
+  security-scan:
+    needs: lint
+    runs-on: ubuntu-latest
+    continue-on-error: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies for Snyk
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/patient-service/requirements.txt
+          pip install -r services/patient-service/requirements-dev.txt
+
+      - name: Set up Node.js for Snyk CLI
+        uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Install Snyk CLI
+        run: npm install -g snyk
+
+      - name: Run Snyk dependency scan
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk test \
+            --file=services/patient-service/requirements.txt \
+            --package-manager=pip \
+            --severity-threshold=high
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/patient-service/requirements.txt
+          pip install -r services/patient-service/requirements-dev.txt
+
+      - name: Run tests
+        env:
+          PATIENT_SERVICE_API_KEY: test-patient-service-key
+          ENVIRONMENT: dev
+          LOG_LEVEL: INFO
+          ENABLE_SEED_DATA: "false"
+          DEFAULT_PAGE_SIZE: "20"
+          MAX_PAGE_SIZE: "100"
+          RATE_LIMIT_PER_MINUTE: "100"
+          PYTHONPATH: services/patient-service
+        run: python -m pytest services/patient-service/tests -q
+
+  build:
+    needs: [test, security-scan]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.10.0
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/githostan/healthcare-platform/patient-service
+          tags: |
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.title=patient-service
+            org.opencontainers.image.description=Patient service API for healthcare-platform
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Login to GitHub Container Registry
+        if: ${{ github.event_name == 'push' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and optionally push Docker image
+        uses: docker/build-push-action@v6.15.0
+        with:
+          context: ./services/patient-service
+          file: ./services/patient-service/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+
+
+
+
+
+
+
+# # =========================================================
+# # CI Build and Publish Pipeline
+# # =========================================================
+# # Purpose:
+# # - Run linting and tests for application changes
+# # - Validate Kubernetes manifests for k8s-only changes
+# # - Build and optionally publish Docker images to GHCR
+# #
+# # Why this workflow exists:
+# # - Prevent unnecessary image builds when only k8s manifests change
+# # - Keep app validation (lint/test/build) separate from k8s validation
+# # - Ensure Docker images are only built when app-related files change
+# #
+# # Trigger behavior:
+# # - Runs on pushes to develop and main
+# # - Runs on pull requests targeting develop and main
+# # =========================================================
+
+# name: CI Build and Publish Pipeline
+
+# on:
+#   push:
+#     branches: ["develop", "main"]
+#   pull_request:
+#     branches: ["develop", "main"]
+
+# jobs:
+#   # =======================================================
+#   # JOB 1: Detect what changed
+#   # =======================================================
+#   changes:
+#     runs-on: ubuntu-latest
+#     outputs:
+#       app_changed: ${{ steps.filter.outputs.app_changed }}
+#       k8s_changed: ${{ steps.filter.outputs.k8s_changed }}
+
+#     steps:
+#       # -----------------------------------------------
+#       # Step: Checkout code
+#       # -----------------------------------------------
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+ 
+#       # -----------------------------------------------
+#       # Step: Detect changed files
+#       # -----------------------------------------------    
+#       - name: Detect changed files
+#         id: filter
+#         shell: bash
+#         run: |
+#           set -euo pipefail
+
+#           # Decide which commits to compare depending on event type.
+#           if [ "${{ github.event_name }}" = "pull_request" ]; then
+#             BASE="${{ github.event.pull_request.base.sha }}"
+#             HEAD="${{ github.event.pull_request.head.sha }}"
+#           else
+#             BASE="${{ github.event.before }}"
+#             HEAD="${{ github.sha }}"
+#           fi
+
+#           echo "Comparing: $BASE -> $HEAD"
+
+#           # List changed files between BASE and HEAD.
+#           # '|| true' prevents the script from failing if git diff
+#           # returns a non-zero exit code for edge cases.
+#           CHANGED_FILES="$(git diff --name-only "$BASE" "$HEAD" || true)"
+
+#           echo "$CHANGED_FILES"
+
+#           APP_CHANGED=false
+#           K8S_CHANGED=false
+
+#           # If any app-artifact-related files changed, mark APP_CHANGED=true.
+#           # Intentionally strict:
+#           # - Includes code, tests, Dockerfile, requirements, and the service CI workflow
+#           # - Excludes README/docs and Kubernetes manifests so they do NOT trigger image builds
+#           if echo "$CHANGED_FILES" | grep -E '^(services/patient-service/(app/|tests/|Dockerfile$|requirements\.txt$|requirements-dev\.txt$)|\.github/workflows/patient-service-ci\.yml)' >/dev/null; then
+#             APP_CHANGED=true
+#           fi
+
+#           # If any files inside k8s/ changed, or if the platform checks workflow changed,
+#           # mark K8S_CHANGED=true.
+#           if echo "$CHANGED_FILES" | grep -E '^(k8s/|\.github/workflows/platform-checks\.yml)' >/dev/null; then
+#             K8S_CHANGED=true
+#           fi
+
+#           # Export values so other jobs can read them.
+#           echo "app_changed=$APP_CHANGED" >> "$GITHUB_OUTPUT"
+#           echo "k8s_changed=$K8S_CHANGED" >> "$GITHUB_OUTPUT"
+  
+#   # =======================================================
+#   # JOB 2: Lint Python code
+#   # =======================================================  
+#   lint:
+#     needs: changes
+#     if: ${{ needs.changes.outputs.app_changed == 'true' }}
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       # Checkout repository contents
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       # Set up Python runtime for this job
+#       - name: Set up python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.12"
+
+#       # Install both runtime and development dependencies
+#       # so linting tools are available.
+#       - name: Install dev dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install -r services/patient-service/requirements.txt
+#           pip install -r services/patient-service/requirements-dev.txt
+
+#       # Run Ruff lint checks
+#       - name: Run Ruff lint checks
+#         run: ruff check services/patient-service
+
+#       # Verify formatting is correct
+#       - name: Check formatting
+#         run: ruff format services/patient-service --check
+
+#   # =======================================================
+#   # JOB 3: Run tests
+#   # =======================================================
+#   test:
+#     needs: [changes, lint]
+#     if: ${{ needs.changes.outputs.app_changed == 'true' }}
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       # Checkout repository
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+
+#       # Set up Python
+#       - name: Set up python
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: "3.12"
+
+#       # Install app + dev dependencies
+#       - name: Install dev dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install -r services/patient-service/requirements.txt
+#           pip install -r services/patient-service/requirements-dev.txt
+
+#       # Run pytest
+#       - name: Run tests
+#         env:
+#           PATIENT_SERVICE_API_KEY: ${{ secrets.PATIENT_SERVICE_API_KEY }}
+#           PYTHONPATH: services/patient-service
+#         run: python -m pytest services/patient-service/tests -q
+
+#   # =======================================================
+#   # JOB 4: Validate Kubernetes manifests
+#   # =======================================================
+#   k8s-validate:
+#     needs: changes
+#     if: ${{ needs.changes.outputs.k8s_changed == 'true' }}
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       # Simple file existence checks
+#       - name: Validate Kubernetes manifests
+#         run: |
+#           test -f k8s/base/namespace.yml
+#           test -f k8s/base/patient-service/deployment.yml
+#           test -f k8s/base/patient-service/service.yml
+#           test -f k8s/base/patient-service/secret.example.yml
+
+#   # =======================================================
+#   # JOB 5: Build and optionally push Docker image
+#   # =======================================================
+#   build:
+#     needs: [changes, lint, test]
+#     if: ${{ needs.changes.outputs.app_changed == 'true' }}
+#     runs-on: ubuntu-latest
+
+#     # Required permissions:
+#     # - contents: read   -> read repository content
+#     # - packages: write -> push to GHCR
+#     permissions:
+#       contents: read
+#       packages: write
+
+#     steps:
+#       # Checkout code so Docker build can access the repository
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       # Set up Docker Buildx
+#       #
+#       # Buildx enables modern Docker builds and advanced features
+#       # like multi-platform builds and caching.
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+
+#       # -----------------------------------------------
+#       # Extract Docker metadata
+#       # -----------------------------------------------
+#       - name: Extract Docker metadata
+#         id: meta
+#         uses: docker/metadata-action@v6
+#         with:
+#           images: ghcr.io/githostan/healthcare-platform/patient-service
+#           tags: |
+#             type=raw,value=dev,enable=${{ github.ref == 'refs/heads/develop' }}
+#             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+#             type=sha,prefix=sha-
+#           labels: |
+#             org.opencontainers.image.title=patient-service
+#             org.opencontainers.image.description=Patient service (healthcare-platform)
+#             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+#             org.opencontainers.image.revision=${{ github.sha }}
+#             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+#       # -----------------------------------------------
+#       # Login to GHCR
+#       # -----------------------------------------------
+#       - name: Login to GitHub Container Registry
+#         if: ${{ github.event_name == 'push' }}
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ghcr.io
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.GITHUB_TOKEN }}
+
+#       # -----------------------------------------------
+#       # Build and optionally push Docker image
+#       # -----------------------------------------------
+#       - name: Build and optionally push Docker image
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ./services/patient-service
+#           file: ./services/patient-service/Dockerfile
+#           push: ${{ github.event_name == 'push' }}
+#           tags: ${{ steps.meta.outputs.tags }}
+#           labels: ${{ steps.meta.outputs.labels }}
