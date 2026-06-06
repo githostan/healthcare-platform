@@ -299,8 +299,8 @@ class PatientService:
             PatientRecord(
                 id=str(uuid4()),
                 nhs_number="9434765919",  # valid
-                first_name="Ada",
-                last_name="Nwachukwu",
+                first_name="Zoe",
+                last_name="Brown",
                 date_of_birth=date(1990, 1, 15),
                 gender="FEMALE",
                 phone="07123456789",
