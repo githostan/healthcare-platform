@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
 from app.core.config import settings
-from app.logging_config import configure_logging, get_logger
+from app.core.logging_config import configure_logging, get_logger
 from app.middleware.request_context import RequestContextMiddleware
 from app.repositories.patient_repository import InMemoryPatientRepository
 from app.routes.health import router as health_router
