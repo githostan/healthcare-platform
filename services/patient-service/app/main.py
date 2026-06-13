@@ -19,11 +19,11 @@ from app.core.config import settings
 from app.core.logging_config import configure_logging, get_logger
 from app.middleware.request_context import RequestContextMiddleware
 from app.repositories.patient_repository import InMemoryPatientRepository
-from app.routes.health import router as health_router
-from app.routes.meta import router as meta_router
-from app.routes.metrics import router as metrics_router
-from app.routes.patients import router as patients_router
 from app.services.patient_service import PatientService
+from app.api.v1.health import router as health_router
+from app.api.v1.meta import router as meta_router
+from app.api.v1.metrics import router as metrics_router
+from app.api.v1.patients import router as patients_router
 
 configure_logging()
 logger = get_logger("patient_service")
@@ -65,10 +65,11 @@ app = FastAPI(
 app.state.startup_complete = False
 app.add_middleware(RequestContextMiddleware, logger=logger)
 
+# Mount versioned API
 app.include_router(health_router)
 app.include_router(meta_router)
 app.include_router(metrics_router)
-app.include_router(patients_router)
+app.include_router(patients_router, prefix="/api/v1")
 
 
 def custom_openapi():

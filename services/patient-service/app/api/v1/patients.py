@@ -27,7 +27,7 @@ from app.schemas.patient import (
 )
 from app.services.patient_service import PatientService
 
-router = APIRouter(prefix="/api/v1/patients", tags=["Patients"])
+router = APIRouter(prefix="/patients", tags=["Patients"])
 
 
 def get_service(request: Request) -> PatientService:
