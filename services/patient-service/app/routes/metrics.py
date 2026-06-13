@@ -13,7 +13,7 @@ from fastapi import APIRouter, Security
 from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from app.auth import require_api_key
+from app.auth.dependencies import require_api_key
 
 router = APIRouter(tags=["Observability"])
 

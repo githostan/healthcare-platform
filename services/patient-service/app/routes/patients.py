@@ -14,7 +14,7 @@
 
 from fastapi import APIRouter, Depends, Query, Request, Security, status
 
-from app.auth import require_api_key
+from app.auth.dependencies import require_api_key
 from app.core.config import settings
 from app.schemas.patient import (
     PatientCreate,
