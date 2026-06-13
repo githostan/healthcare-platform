@@ -30,7 +30,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from app.config import settings
+from app.core.config import settings
 from app.utils.security import fingerprint_api_key
 
 REQUEST_COUNT = Counter(

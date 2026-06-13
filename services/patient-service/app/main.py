@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
-from app.config import settings
+from app.core.config import settings
 from app.logging_config import configure_logging, get_logger
 from app.middleware.request_context import RequestContextMiddleware
 from app.repositories.patient_repository import InMemoryPatientRepository
