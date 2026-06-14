@@ -25,6 +25,9 @@ from app.api.v1.meta import router as meta_router
 from app.api.v1.metrics import router as metrics_router
 from app.api.v1.patients import router as patients_router
 
+from app.core.config import settings
+from app.core.telemetry import configure_telemetry
+
 configure_logging()
 logger = get_logger("patient_service")
 
@@ -53,6 +56,8 @@ async def lifespan(app: FastAPI):
         app.state.startup_complete = False
         logger.info("patient-service shutting down")
 
+# Wire telemetry before app creation
+configure_telemetry(settings)
 
 app = FastAPI(
     title="Patient Service API",
