@@ -1,3 +1,4 @@
+
 # =============================================================================
 # Request context middleware
 # (correlation IDs, rate limiting, Prometheus metrics, structured logging)
@@ -25,25 +26,13 @@ from uuid import uuid4
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from prometheus_client import Counter, Histogram
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from app.core.config import settings
+from app.metrics.collector import REQUEST_COUNT, REQUEST_LATENCY
 from app.utils.security import fingerprint_api_key
-
-REQUEST_COUNT = Counter(
-    "http_requests_total",
-    "Total HTTP requests",
-    ["method", "path", "status"],
-)
-
-REQUEST_LATENCY = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request latency",
-    ["path"],
-)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
