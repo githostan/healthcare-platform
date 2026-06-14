@@ -57,3 +57,36 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+# ── OpenTelemetry ─────────────────────────────────────────────────
+otel_enabled: bool = Field(
+    default=True,
+    description="Enable or disable OpenTelemetry instrumentation.",
+)
+otel_exporter_otlp_endpoint: str | None = Field(
+    default=None,
+    description=(
+        "OTLP endpoint for the OTel Collector. "
+        "When unset, ConsoleSpanExporter is active (pre-observability mode). "
+        "gRPC: http://otel-collector.observability.svc.cluster.local:4317 "
+        "HTTP: http://otel-collector.observability.svc.cluster.local:4318"
+    ),
+)
+otel_exporter_protocol: str = Field(
+    default="grpc",
+    description="OTLP transport protocol: grpc or http.",
+)
+otel_sampling_ratio: float = Field(
+    default=1.0,
+    ge=0.0,
+    le=1.0,
+    description="Trace sampling ratio. 1.0 = record every trace.",
+)
+
+# ── Kubernetes Downward API ───────────────────────────────────────
+# Injected automatically by deployment.yml via fieldRef.
+# Set manually in .env for local development only.
+k8s_namespace: str = Field(default="healthcare-dev")
+k8s_pod_name: str = Field(default="unknown")
+k8s_node_name: str = Field(default="unknown")
