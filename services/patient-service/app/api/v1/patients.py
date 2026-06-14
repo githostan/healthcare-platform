@@ -14,8 +14,8 @@
 
 from fastapi import APIRouter, Depends, Query, Request, Security, status
 
-from app.auth import require_api_key
-from app.config import settings
+from app.auth.dependencies import require_api_key
+from app.core.config import settings
 from app.schemas.patient import (
     PatientCreate,
     PatientEligibilityResponse,
@@ -27,7 +27,7 @@ from app.schemas.patient import (
 )
 from app.services.patient_service import PatientService
 
-router = APIRouter(prefix="/api/v1/patients", tags=["Patients"])
+router = APIRouter(prefix="/patients", tags=["Patients"])
 
 
 def get_service(request: Request) -> PatientService:
