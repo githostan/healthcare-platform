@@ -1,4 +1,3 @@
-
 # =============================================================================
 # API key validation logic for patient-service
 # =============================================================================
@@ -20,8 +19,10 @@ from app.core.config import settings
 class MissingApiKeyError(Exception):
     """Raised when the X-API-Key header is absent or empty."""
 
+
 class InvalidApiKeyError(Exception):
     """Raised when the X-API-Key header is present but does not match."""
+
 
 def validate_api_key(api_key: str | None) -> str:
     """

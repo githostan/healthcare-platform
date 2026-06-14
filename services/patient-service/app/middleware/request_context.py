@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Request context middleware
 # (correlation IDs, rate limiting, Prometheus metrics, structured logging)
