@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import logging
 
+from fastapi import FastAPI
+
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter as OTLPGrpcSpanExporter,
@@ -40,16 +42,22 @@ from opentelemetry.propagators.b3 import B3MultiFormat
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from app.core.config import Settings
 
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SimpleSpanProcessor,
+)
+
+
 logger = logging.getLogger(__name__)
 
 
-def configure_telemetry(settings: Settings) -> None:
+def configure_telemetry(app: FastAPI, settings: Settings) -> None:
     """
     Initialise OpenTelemetry for patient-service.
 
@@ -64,12 +72,21 @@ def configure_telemetry(settings: Settings) -> None:
         resource=_build_resource(settings),
         sampler=_build_sampler(settings),
     )
-    provider.add_span_processor(BatchSpanProcessor(_build_exporter(settings)))
+    exporter = _build_exporter(settings)
+    
+    if settings.otel_exporter_otlp_endpoint:
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+    else:
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+    # Set provider globally BEFORE instrumenting libraries
     trace.set_tracer_provider(provider)
 
     _configure_propagators()
-    _instrument_libraries()
+    _instrument_libraries(app)
 
+    # Verify it stuck
+    actual = trace.get_tracer_provider()
     logger.info(
         "OpenTelemetry initialised",
         extra={
@@ -177,7 +194,7 @@ def _configure_propagators() -> None:
     )
 
 
-def _instrument_libraries() -> None:
+def _instrument_libraries(app: FastAPI) -> None:
     """
     Auto-instrument all supported libraries.
 
@@ -186,6 +203,6 @@ def _instrument_libraries() -> None:
     logging   — injects trace_id and span_id into every log record
                 enabling Grafana log-to-trace correlation in Loki + Tempo.
     """
-    FastAPIInstrumentor().instrument()
+    FastAPIInstrumentor.instrument_app(app)
     HTTPXClientInstrumentor().instrument()
     LoggingInstrumentor().instrument(set_logging_format=False)

@@ -1,15 +1,7 @@
+
 # =============================================================================
 # FastAPI application providing patient identity and profile
 # =============================================================================
-# - Patient Service API — FastAPI microservice providing patient identity and profile
-# management with structured logging, API‑key authentication, Prometheus metrics,
-# pagination metadata, soft‑delete lifecycle handling, audit logging, and full
-# correlation/request ID propagation across all routes.
-
-# - This module bootstraps the application: configures logging, initializes the
-# repository and service layer, registers middleware, mounts all routers, and
-# generates a custom OpenAPI schema with API‑key security definitions.
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -17,6 +9,7 @@ from fastapi.openapi.utils import get_openapi
 
 from app.core.config import settings
 from app.core.logging_config import configure_logging, get_logger
+from app.core.telemetry import configure_telemetry
 from app.middleware.request_context import RequestContextMiddleware
 from app.repositories.patient_repository import InMemoryPatientRepository
 from app.services.patient_service import PatientService
@@ -25,12 +18,8 @@ from app.api.v1.meta import router as meta_router
 from app.api.v1.metrics import router as metrics_router
 from app.api.v1.patients import router as patients_router
 
-from app.core.config import settings
-from app.core.telemetry import configure_telemetry
-
 configure_logging()
 logger = get_logger("patient_service")
-
 
 tags_metadata = [
     {"name": "Health", "description": "Liveness, readiness, and startup probes"},
@@ -56,8 +45,6 @@ async def lifespan(app: FastAPI):
         app.state.startup_complete = False
         logger.info("patient-service shutting down")
 
-# Wire telemetry before app creation
-configure_telemetry(settings)
 
 app = FastAPI(
     title="Patient Service API",
@@ -67,10 +54,20 @@ app = FastAPI(
     swagger_ui_parameters={"persistAuthorization": True},
     lifespan=lifespan,
 )
+
 app.state.startup_complete = False
+
+# Register RequestContextMiddleware FIRST
+# Starlette reverses order — last registered = outermost
 app.add_middleware(RequestContextMiddleware, logger=logger)
 
-# Mount versioned API
+# configure_telemetry LAST — adds OpenTelemetryMiddleware as outermost
+# Execution order becomes:
+#   Request: OpenTelemetryMiddleware → RequestContextMiddleware → route
+#   Response: route → RequestContextMiddleware → OpenTelemetryMiddleware
+# request_complete fires while OTel span is still active → real trace IDs
+configure_telemetry(app, settings)
+
 app.include_router(health_router)
 app.include_router(meta_router)
 app.include_router(metrics_router)

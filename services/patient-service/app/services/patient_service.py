@@ -1,3 +1,4 @@
+
 # =============================================================================
 # Patient domain service (business logic, validation, audit logging)
 # =============================================================================
@@ -12,6 +13,8 @@
 # - Converts repository records into Pydantic response schemas for consistent
 #   API output formatting.
 # - Designed for clean separation of concerns: routes → service → repository.
+# - Adds OpenTelemetry business spans, repository sub-spans, business events,
+#   and safe non-PII attributes for Tempo/Grafana trace analysis.
 
 from __future__ import annotations
 
@@ -20,6 +23,8 @@ from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from app.models.patient import PatientRecord
 from app.repositories.patient_repository import InMemoryPatientRepository
@@ -34,10 +39,14 @@ from app.schemas.patient import (
 )
 from app.utils.security import fingerprint_api_key
 
+tracer = trace.get_tracer(__name__)
+
 
 class PatientService:
     def __init__(
-        self, repository: InMemoryPatientRepository, logger: logging.Logger
+        self,
+        repository: InMemoryPatientRepository,
+        logger: logging.Logger,
     ) -> None:
         self.repository = repository
         self.logger = logger
@@ -68,6 +77,8 @@ class PatientService:
     def _to_schema(self, record: PatientRecord) -> PatientOut:
         return PatientOut.model_validate(record)
 
+    # ── Read operations ───────────────────────────────────────────
+
     def list_patients(
         self,
         *,
@@ -77,48 +88,161 @@ class PatientService:
         page: int,
         size: int,
     ) -> PatientListResponse:
-        # NOTE:
-        # Filtering is currently done in-memory because this service uses an
-        # InMemoryPatientRepository. When moving to Postgres, push these filters
-        # down into query predicates at the repository/database layer.
-        items = self.repository.list()
+        with tracer.start_as_current_span(
+            "patient.list",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            span.set_attribute("query.include_inactive", include_inactive)
+            span.set_attribute("query.page", page)
+            span.set_attribute("query.size", size)
 
-        if not include_inactive:
-            items = [p for p in items if p.status == "ACTIVE"]
+            if status:
+                span.set_attribute("query.status", str(status))
 
-        if status:
-            items = [p for p in items if p.status == status]
+            if registered_practice_code:
+                span.set_attribute(
+                    "query.registered_practice_code",
+                    registered_practice_code,
+                )
 
-        if registered_practice_code:
-            items = [
-                p
-                for p in items
-                if p.registered_practice_code == registered_practice_code
-            ]
+            # NOTE: Filtering is in-memory now. When PostgreSQL arrives,
+            # push these predicates down to the query layer.
+            with tracer.start_as_current_span(
+                "repository.patient.list",
+                kind=SpanKind.INTERNAL,
+            ) as repository_span:
+                items = self.repository.list()
+                repository_span.set_attribute("repository.result_count", len(items))
 
-        total = len(items)
-        start = (page - 1) * size
-        end = start + size
-        paged = items[start:end]
+            span.set_attribute("result.records_before_filter", len(items))
 
-        return PatientListResponse(
-            items=[self._to_schema(p) for p in paged],
-            page=page,
-            size=size,
-            total=total,
-        )
+            if not include_inactive:
+                items = [p for p in items if p.status == "ACTIVE"]
+
+            if status:
+                items = [p for p in items if p.status == status]
+
+            if registered_practice_code:
+                items = [
+                    p
+                    for p in items
+                    if p.registered_practice_code == registered_practice_code
+                ]
+
+            total = len(items)
+            start = (page - 1) * size
+            paged = items[start : start + size]
+
+            span.set_attribute("result.total", total)
+            span.set_attribute("result.page_count", len(paged))
+            span.add_event(
+                "patients_listed",
+                {
+                    "result.total": total,
+                    "result.page_count": len(paged),
+                },
+            )
+
+            return PatientListResponse(
+                items=[self._to_schema(p) for p in paged],
+                page=page,
+                size=size,
+                total=total,
+            )
 
     def get_patient(self, patient_id: str) -> PatientOut:
-        record = self.repository.get(patient_id)
-        if not record:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        return self._to_schema(record)
+        with tracer.start_as_current_span(
+            "patient.get",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            span.set_attribute("patient.id", patient_id)
+
+            with tracer.start_as_current_span(
+                "repository.patient.get",
+                kind=SpanKind.INTERNAL,
+            ):
+                record = self.repository.get(patient_id)
+
+            if not record:
+                span.set_status(Status(StatusCode.ERROR, "Patient not found"))
+                span.set_attribute("error.type", "not_found")
+                span.add_event("patient_not_found")
+                raise HTTPException(status_code=404, detail="Patient not found")
+
+            span.set_attribute("patient.status", record.status)
+            span.add_event("patient_retrieved")
+            return self._to_schema(record)
 
     def get_by_nhs_number(self, nhs_number: str) -> PatientOut:
-        record = self.repository.get_by_nhs_number(nhs_number)
-        if not record:
-            raise HTTPException(status_code=404, detail="Patient not found")
-        return self._to_schema(record)
+        with tracer.start_as_current_span(
+            "patient.get_by_nhs_number",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            # Do not set nhs_number as span attribute — PII.
+            with tracer.start_as_current_span(
+                "repository.patient.get_by_nhs_number",
+                kind=SpanKind.INTERNAL,
+            ):
+                record = self.repository.get_by_nhs_number(nhs_number)
+
+            if not record:
+                span.set_status(Status(StatusCode.ERROR, "Patient not found"))
+                span.set_attribute("error.type", "not_found")
+                span.add_event("patient_not_found")
+                raise HTTPException(status_code=404, detail="Patient not found")
+
+            span.set_attribute("patient.id", str(record.id))
+            span.set_attribute("patient.status", record.status)
+            span.add_event("patient_retrieved_by_nhs_number")
+            return self._to_schema(record)
+
+    def get_eligibility(self, patient_id: str) -> PatientEligibilityResponse:
+        with tracer.start_as_current_span(
+            "patient.eligibility.check",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            span.set_attribute("patient.id", patient_id)
+
+            with tracer.start_as_current_span(
+                "repository.patient.get",
+                kind=SpanKind.INTERNAL,
+            ):
+                record = self.repository.get(patient_id)
+
+            if not record:
+                span.set_attribute("eligibility.result", "not_found")
+                span.set_attribute("eligibility.eligible", False)
+                span.add_event("eligibility_checked_not_found")
+                return PatientEligibilityResponse(
+                    patient_id=patient_id,
+                    exists=False,
+                    status=None,
+                    eligible_for_booking=False,
+                )
+
+            eligible = record.status == "ACTIVE"
+            span.set_attribute("patient.status", record.status)
+            span.set_attribute(
+                "eligibility.result",
+                "eligible" if eligible else "ineligible",
+            )
+            span.set_attribute("eligibility.eligible", eligible)
+            span.add_event(
+                "eligibility_checked",
+                {
+                    "eligibility.eligible": eligible,
+                    "patient.status": record.status,
+                },
+            )
+
+            return PatientEligibilityResponse(
+                patient_id=patient_id,
+                exists=True,
+                status=record.status,
+                eligible_for_booking=eligible,
+            )
+
+    # ── Write operations ──────────────────────────────────────────
 
     def create_patient(
         self,
@@ -128,36 +252,68 @@ class PatientService:
         correlation_id: str,
         api_key: str,
     ) -> PatientOut:
-        try:
-            if self.repository.get_by_nhs_number(payload.nhs_number):
-                raise HTTPException(
-                    status_code=409,
-                    detail="Patient NHS number already exists",
+        with tracer.start_as_current_span(
+            "patient.create",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            span.set_attribute("request.id", request_id)
+            span.set_attribute("correlation.id", correlation_id)
+            # Do not set nhs_number — PII.
+
+            try:
+                with tracer.start_as_current_span(
+                    "repository.patient.get_by_nhs_number",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    existing = self.repository.get_by_nhs_number(payload.nhs_number)
+
+                if existing:
+                    span.set_status(
+                        Status(StatusCode.ERROR, "NHS number already exists")
+                    )
+                    span.set_attribute("error.type", "duplicate_nhs_number")
+                    span.add_event("patient_create_rejected_duplicate_nhs_number")
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Patient NHS number already exists",
+                    )
+
+                with tracer.start_as_current_span(
+                    "repository.patient.create",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    record = self.repository.create(payload)
+
+                span.set_attribute("patient.id", str(record.id))
+                span.set_attribute("patient.status", record.status)
+                span.add_event(
+                    "patient_created",
+                    {
+                        "patient.id": str(record.id),
+                        "patient.status": record.status,
+                    },
                 )
 
-            record = self.repository.create(payload)
+                self._audit(
+                    action="create",
+                    resource_id=record.id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome="success",
+                )
+                return self._to_schema(record)
 
-            self._audit(
-                action="create",
-                resource_id=record.id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome="success",
-            )
-
-            return self._to_schema(record)
-
-        except HTTPException as exc:
-            self._audit(
-                action="create",
-                resource_id="unknown",
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome=f"failed:{exc.status_code}",
-            )
-            raise
+            except HTTPException as exc:
+                self._audit(
+                    action="create",
+                    resource_id="unknown",
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome=f"failed:{exc.status_code}",
+                )
+                raise
 
     def update_patient(
         self,
@@ -168,43 +324,77 @@ class PatientService:
         correlation_id: str,
         api_key: str,
     ) -> PatientOut:
-        try:
-            # NOTE:
-            # This uniqueness check is sufficient for the in-memory repository.
-            # When moving to Postgres, enforce NHS number uniqueness with a
-            # database-level unique constraint as well.
-            existing_by_nhs = self.repository.get_by_nhs_number(payload.nhs_number)
-            if existing_by_nhs and existing_by_nhs.id != patient_id:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Patient NHS number already exists",
+        with tracer.start_as_current_span(
+            "patient.update",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            span.set_attribute("patient.id", patient_id)
+            span.set_attribute("request.id", request_id)
+            span.set_attribute("correlation.id", correlation_id)
+
+            try:
+                # NOTE: When PostgreSQL arrives, enforce uniqueness via
+                # database constraint in addition to this check.
+                with tracer.start_as_current_span(
+                    "repository.patient.get_by_nhs_number",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    existing_by_nhs = self.repository.get_by_nhs_number(
+                        payload.nhs_number
+                    )
+
+                if existing_by_nhs and existing_by_nhs.id != patient_id:
+                    span.set_status(
+                        Status(StatusCode.ERROR, "NHS number conflict")
+                    )
+                    span.set_attribute("error.type", "nhs_number_conflict")
+                    span.add_event("patient_update_rejected_nhs_number_conflict")
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Patient NHS number already exists",
+                    )
+
+                with tracer.start_as_current_span(
+                    "repository.patient.update",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    record = self.repository.update(patient_id, payload)
+
+                if not record:
+                    span.set_status(Status(StatusCode.ERROR, "Patient not found"))
+                    span.set_attribute("error.type", "not_found")
+                    span.add_event("patient_update_failed_not_found")
+                    raise HTTPException(status_code=404, detail="Patient not found")
+
+                span.set_attribute("patient.status", record.status)
+                span.add_event(
+                    "patient_updated",
+                    {
+                        "patient.id": str(record.id),
+                        "patient.status": record.status,
+                    },
                 )
 
-            record = self.repository.update(patient_id, payload)
-            if not record:
-                raise HTTPException(status_code=404, detail="Patient not found")
+                self._audit(
+                    action="update",
+                    resource_id=record.id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome="success",
+                )
+                return self._to_schema(record)
 
-            self._audit(
-                action="update",
-                resource_id=record.id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome="success",
-            )
-
-            return self._to_schema(record)
-
-        except HTTPException as exc:
-            self._audit(
-                action="update",
-                resource_id=patient_id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome=f"failed:{exc.status_code}",
-            )
-            raise
+            except HTTPException as exc:
+                self._audit(
+                    action="update",
+                    resource_id=patient_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome=f"failed:{exc.status_code}",
+                )
+                raise
 
     def update_status(
         self,
@@ -215,32 +405,73 @@ class PatientService:
         correlation_id: str,
         api_key: str,
     ) -> PatientOut:
-        try:
-            record = self.repository.set_status(patient_id, payload.status)
-            if not record:
-                raise HTTPException(status_code=404, detail="Patient not found")
+        with tracer.start_as_current_span(
+            "patient.status.update",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            span.set_attribute("patient.id", patient_id)
+            span.set_attribute("request.id", request_id)
+            span.set_attribute("correlation.id", correlation_id)
+            span.set_attribute("status.new", str(payload.status))
 
-            self._audit(
-                action="status_update",
-                resource_id=record.id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome="success",
-            )
+            try:
+                with tracer.start_as_current_span(
+                    "repository.patient.get",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    existing = self.repository.get(patient_id)
 
-            return self._to_schema(record)
+                if not existing:
+                    span.set_status(Status(StatusCode.ERROR, "Patient not found"))
+                    span.set_attribute("error.type", "not_found")
+                    span.add_event("patient_status_update_failed_not_found")
+                    raise HTTPException(status_code=404, detail="Patient not found")
 
-        except HTTPException as exc:
-            self._audit(
-                action="status_update",
-                resource_id=patient_id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome=f"failed:{exc.status_code}",
-            )
-            raise
+                previous_status = existing.status
+                span.set_attribute("status.previous", previous_status)
+
+                with tracer.start_as_current_span(
+                    "repository.patient.set_status",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    record = self.repository.set_status(patient_id, payload.status)
+
+                if not record:
+                    span.set_status(Status(StatusCode.ERROR, "Patient not found"))
+                    span.set_attribute("error.type", "not_found")
+                    span.add_event("patient_status_update_failed_not_found")
+                    raise HTTPException(status_code=404, detail="Patient not found")
+
+                span.set_attribute("patient.status", record.status)
+                span.add_event(
+                    "patient_status_changed",
+                    {
+                        "patient.id": str(record.id),
+                        "status.previous": previous_status,
+                        "status.new": str(payload.status),
+                    },
+                )
+
+                self._audit(
+                    action="status_update",
+                    resource_id=record.id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome="success",
+                )
+                return self._to_schema(record)
+
+            except HTTPException as exc:
+                self._audit(
+                    action="status_update",
+                    resource_id=patient_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome=f"failed:{exc.status_code}",
+                )
+                raise
 
     def soft_delete(
         self,
@@ -250,55 +481,80 @@ class PatientService:
         correlation_id: str,
         api_key: str,
     ) -> None:
-        try:
-            record = self.repository.set_status(patient_id, "INACTIVE")
-            if not record:
-                raise HTTPException(status_code=404, detail="Patient not found")
+        with tracer.start_as_current_span(
+            "patient.soft_delete",
+            kind=SpanKind.INTERNAL,
+        ) as span:
+            span.set_attribute("patient.id", patient_id)
+            span.set_attribute("request.id", request_id)
+            span.set_attribute("correlation.id", correlation_id)
 
-            self._audit(
-                action="soft_delete",
-                resource_id=record.id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome="success",
-            )
+            try:
+                with tracer.start_as_current_span(
+                    "repository.patient.get",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    existing = self.repository.get(patient_id)
 
-        except HTTPException as exc:
-            self._audit(
-                action="soft_delete",
-                resource_id=patient_id,
-                request_id=request_id,
-                correlation_id=correlation_id,
-                api_key=api_key,
-                outcome=f"failed:{exc.status_code}",
-            )
-            raise
+                if not existing:
+                    span.set_status(Status(StatusCode.ERROR, "Patient not found"))
+                    span.set_attribute("error.type", "not_found")
+                    span.add_event("patient_soft_delete_failed_not_found")
+                    raise HTTPException(status_code=404, detail="Patient not found")
 
-    def get_eligibility(self, patient_id: str) -> PatientEligibilityResponse:
-        record = self.repository.get(patient_id)
-        if not record:
-            return PatientEligibilityResponse(
-                patient_id=patient_id,
-                exists=False,
-                status=None,
-                eligible_for_booking=False,
-            )
+                previous_status = existing.status
 
-        return PatientEligibilityResponse(
-            patient_id=patient_id,
-            exists=True,
-            status=record.status,
-            eligible_for_booking=(record.status == "ACTIVE"),
-        )
+                with tracer.start_as_current_span(
+                    "repository.patient.set_status",
+                    kind=SpanKind.INTERNAL,
+                ):
+                    record = self.repository.set_status(patient_id, "INACTIVE")
+
+                if not record:
+                    span.set_status(Status(StatusCode.ERROR, "Patient not found"))
+                    span.set_attribute("error.type", "not_found")
+                    span.add_event("patient_soft_delete_failed_not_found")
+                    raise HTTPException(status_code=404, detail="Patient not found")
+
+                span.set_attribute("status.previous", previous_status)
+                span.set_attribute("status.new", "INACTIVE")
+                span.add_event(
+                    "patient_soft_deleted",
+                    {
+                        "patient.id": str(record.id),
+                        "status.previous": previous_status,
+                        "status.new": "INACTIVE",
+                    },
+                )
+
+                self._audit(
+                    action="soft_delete",
+                    resource_id=record.id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome="success",
+                )
+
+            except HTTPException as exc:
+                self._audit(
+                    action="soft_delete",
+                    resource_id=patient_id,
+                    request_id=request_id,
+                    correlation_id=correlation_id,
+                    api_key=api_key,
+                    outcome=f"failed:{exc.status_code}",
+                )
+                raise
+
+    # ── Seed data ─────────────────────────────────────────────────
 
     def seed_data(self) -> None:
         now = datetime.now(timezone.utc)
-
         seeded = [
             PatientRecord(
                 id=str(uuid4()),
-                nhs_number="9434765919",  # valid
+                nhs_number="9434765919",
                 first_name="Zoe",
                 last_name="Brown",
                 date_of_birth=date(1990, 1, 15),
@@ -313,7 +569,7 @@ class PatientService:
             ),
             PatientRecord(
                 id=str(uuid4()),
-                nhs_number="4857773456",  # valid
+                nhs_number="4857773456",
                 first_name="John",
                 last_name="Smith",
                 date_of_birth=date(1983, 7, 7),
@@ -327,5 +583,6 @@ class PatientService:
                 updated_at=now,
             ),
         ]
-
         self.repository.seed(seeded)
+
+        
