@@ -36,8 +36,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.datastructures import MutableHeaders
 
 from app.core.config import settings
-from app.metrics.collector import REQUEST_COUNT, REQUEST_LATENCY
 from app.utils.security import fingerprint_api_key
+
+from app.metrics.collector import REQUEST_COUNT, REQUEST_LATENCY, rate_limit_hits_total
 
 
 class RequestContextMiddleware:
@@ -90,6 +91,7 @@ class RequestContextMiddleware:
                     status="429",
                 ).inc()
                 REQUEST_LATENCY.labels(path=path).observe(0)
+                rate_limit_hits_total.inc()
 
                 response = JSONResponse(
                     status_code=429,
