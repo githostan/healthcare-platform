@@ -15,6 +15,15 @@ import secrets
 
 from app.core.config import settings
 
+# Add to imports:
+from app.metrics.collector import auth_failures_total
+
+# In validate_api_key, after the missing key log:
+auth_failures_total.labels(reason="missing_key").inc()
+
+# In validate_api_key, after the invalid key log:
+auth_failures_total.labels(reason="invalid_key").inc()
+
 
 class MissingApiKeyError(Exception):
     """Raised when the X-API-Key header is absent or empty."""

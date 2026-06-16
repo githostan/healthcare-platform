@@ -14,49 +14,69 @@
 #   API-key fingerprints for audit and security visibility.
 # - Provides a unified observability and traffic-governance layer that ensures
 #   consistent behaviour across all routes in the patient-service.
+#
+# Implementation note:
+#   Uses pure ASGI middleware instead of BaseHTTPMiddleware.
+#   BaseHTTPMiddleware breaks OTel context propagation across the call_next
+#   boundary — the OTel span context is lost by the time request_complete
+#   is logged. Pure ASGI middleware preserves the context throughout the
+#   entire request lifecycle, giving real trace_id and span_id in all logs.
 
 from __future__ import annotations
 
 import logging
 import time
 from collections import defaultdict, deque
-from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.datastructures import MutableHeaders
 
 from app.core.config import settings
-from app.metrics.collector import REQUEST_COUNT, REQUEST_LATENCY
 from app.utils.security import fingerprint_api_key
 
+from app.metrics.collector import REQUEST_COUNT, REQUEST_LATENCY, rate_limit_hits_total
 
-class RequestContextMiddleware(BaseHTTPMiddleware):
+
+class RequestContextMiddleware:
+    """
+    Pure ASGI middleware for request context injection and observability.
+
+    Does not extend BaseHTTPMiddleware — pure ASGI __call__ preserves
+    the OTel context across the entire request lifecycle so trace_id
+    and span_id are real and non-zero in all log lines including
+    request_complete.
+    """
+
     EXEMPT_PATHS = {"/healthz", "/readyz", "/startupz", "/info", "/metrics"}
 
     def __init__(self, app: ASGIApp, logger: logging.Logger) -> None:
-        super().__init__(app)
+        self.app = app
         self.logger = logger
         self.requests_by_key: dict[str, deque[float]] = defaultdict(deque)
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive, send)
+        path = request.url.path
+
         request_id = request.headers.get("X-Request-ID") or str(uuid4())
         correlation_id = request.headers.get("X-Correlation-ID") or str(uuid4())
 
+        # Inject into request state for route handlers to access
         request.state.request_id = request_id
         request.state.correlation_id = correlation_id
 
         api_key = request.headers.get("X-API-Key", "")
         now = time.time()
 
-        if api_key and request.url.path not in self.EXEMPT_PATHS:
+        # Rate limiting — skip exempt paths
+        if api_key and path not in self.EXEMPT_PATHS:
             window = self.requests_by_key[api_key]
             while window and now - window[0] > 60:
                 window.popleft()
@@ -64,13 +84,13 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             if len(window) >= settings.rate_limit_per_minute:
                 REQUEST_COUNT.labels(
                     method=request.method,
-                    path=request.url.path,
+                    path=path,
                     status="429",
                 ).inc()
+                REQUEST_LATENCY.labels(path=path).observe(0)
+                rate_limit_hits_total.inc()
 
-                REQUEST_LATENCY.labels(path=request.url.path).observe(0)
-
-                return JSONResponse(
+                response = JSONResponse(
                     status_code=429,
                     content={"detail": "Rate limit exceeded"},
                     headers={
@@ -78,53 +98,62 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                         "X-Correlation-ID": correlation_id,
                     },
                 )
+                await response(scope, receive, send)
+                return
 
             window.append(now)
 
         start = time.time()
+        status_code = 500
+
+        async def send_with_headers(message) -> None:
+            """
+            Intercept http.response.start to inject response headers
+            and capture the status code for metrics and logging.
+
+            Uses MutableHeaders (Starlette-native) instead of raw dict
+            to correctly handle duplicate headers including Set-Cookie.
+            """
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                # Inject MutableHeaders
+                headers = MutableHeaders(scope=message)
+                headers["X-Request-ID"] = request_id
+                headers["X-Correlation-ID"] = correlation_id
+            await send(message)
 
         try:
-            response = await call_next(request)
-            status_code = response.status_code
+            await self.app(scope, receive, send_with_headers)
         except Exception:
             elapsed = time.time() - start
-            elapsed_ms = int(elapsed * 1000)
-            status_code = 500
-
             REQUEST_COUNT.labels(
                 method=request.method,
-                path=request.url.path,
-                status=str(status_code),
+                path=path,
+                status="500",
             ).inc()
-
-            REQUEST_LATENCY.labels(path=request.url.path).observe(elapsed)
-
+            REQUEST_LATENCY.labels(path=path).observe(elapsed)
             self.logger.exception(
                 "request_failed",
                 extra={
                     "request_id": request_id,
                     "correlation_id": correlation_id,
                     "method": request.method,
-                    "path": request.url.path,
-                    "status": status_code,
-                    "latency_ms": elapsed_ms,
+                    "path": path,
+                    "status": 500,
+                    "latency_ms": int(elapsed * 1000),
                 },
             )
             raise
 
         elapsed = time.time() - start
-        elapsed_ms = int(elapsed * 1000)
-
-        response.headers["X-Request-ID"] = request_id
-        response.headers["X-Correlation-ID"] = correlation_id
 
         REQUEST_COUNT.labels(
             method=request.method,
-            path=request.url.path,
+            path=path,
             status=str(status_code),
         ).inc()
-
-        REQUEST_LATENCY.labels(path=request.url.path).observe(elapsed)
+        REQUEST_LATENCY.labels(path=path).observe(elapsed)
 
         self.logger.info(
             "request_complete",
@@ -132,11 +161,9 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 "request_id": request_id,
                 "correlation_id": correlation_id,
                 "method": request.method,
-                "path": request.url.path,
+                "path": path,
                 "status": status_code,
-                "latency_ms": elapsed_ms,
+                "latency_ms": int(elapsed * 1000),
                 "api_key_fingerprint": fingerprint_api_key(api_key),
             },
         )
-
-        return response
