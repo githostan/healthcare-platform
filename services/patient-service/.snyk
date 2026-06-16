@@ -1,0 +1,31 @@
+
+# .snyk
+# Snyk vulnerability ignore rules for patient-service
+#
+# These findings are acknowledged and accepted for the reasons stated.
+# Each entry has an expiry date for mandatory reassessment.
+version: v1.25.0
+
+ignore:
+  SNYK-PYTHON-STARLETTE-17342498:
+    - '*':
+        reason: >
+          SSRF vulnerability in Starlette affects StaticFiles and Mount with
+          user-controlled paths. patient-service does not use StaticFiles,
+          Mount, or any user-controlled path mounting. Attack surface is zero.
+          Cannot upgrade to Starlette 1.x — opentelemetry-instrumentation-fastapi
+          0.54b1 is incompatible with Starlette 1.x (_IncludedRouter.path error).
+          Reassess when OTel instrumentation supports Starlette 1.x.
+        expires: '2026-12-31T00:00:00.000Z'
+
+  SNYK-PYTHON-STARLETTE-17342519:
+    - '*':
+        reason: >
+          Name resolution vulnerability in Starlette affects routing edge cases
+          with user-controlled path parameters. patient-service uses only
+          standard FastAPI routing with typed path parameters — no dynamic
+          route mounting or user-controlled routing. Attack surface is zero.
+          Cannot upgrade to Starlette 1.x — opentelemetry-instrumentation-fastapi
+          0.54b1 is incompatible with Starlette 1.x (_IncludedRouter.path error).
+          Reassess when OTel instrumentation supports Starlette 1.x.
+        expires: '2026-12-31T00:00:00.000Z'
