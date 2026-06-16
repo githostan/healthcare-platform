@@ -6,65 +6,95 @@ metadata:
   namespace: healthcare-dev
   labels:
     app: patient-service
-
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: patient-service
-
   template:
     metadata:
       labels:
         app: patient-service
-
     spec:
       containers:
         - name: patient-service
-          image: ghcr.io/githostan/healthcare-platform/patient-service:sha-a796ade               
-          imagePullPolicy: IfNotPresent                                           
+          image: ghcr.io/githostan/healthcare-platform/patient-service:sha-a796ade
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8000                       
-
+            - containerPort: 8000
           env:
+            # ── Security ────────────────────────────────────────────
             - name: PATIENT_SERVICE_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: patient-service-secret
                   key: PATIENT_SERVICE_API_KEY
+
+            # ── Service identity ────────────────────────────────────
+            - name: SERVICE_VERSION
+              value: "0.1.0"
             - name: ENVIRONMENT
               value: "dev"
-            - name: ENABLE_SEED_DATA
-              value: "true"
             - name: LOG_LEVEL
               value: "INFO"
 
+            # ── Feature flags ───────────────────────────────────────
+            - name: ENABLE_SEED_DATA
+              value: "true"
 
-          readinessProbe:                                            
-            httpGet:
-              path: /readyz                                         
-              port: 8000
-            initialDelaySeconds: 5                                  
-            periodSeconds: 10                                       
+            # ── k8s downward API ────────────────────────────────────
+            # Injects pod identity into OTel spans and structured logs.
+            # Identifies exactly which pod generated a trace or log line.
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
 
-          livenessProbe:                                            
+            # ── OpenTelemetry ───────────────────────────────────────
+            # Uncomment when OTel Collector is deployed
+            # - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            #   value: "http://otel-collector.observability.svc.cluster.local:4317"
+            # - name: OTEL_EXPORTER_PROTOCOL
+            #   value: "grpc"
+            # - name: OTEL_SAMPLING_RATIO
+            #   value: "1.0"
+
+          startupProbe:
             httpGet:
-              path: /healthz                                       
+              path: /startupz
               port: 8000
-            initialDelaySeconds: 10       
-            periodSeconds: 15             
-            # timeoutSeconds: 60
-            # failureThreshold: 1
-          
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 10
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
           resources:
             requests:
-              cpu: "25m"                                           
-              memory: "64Mi"                                       
+              cpu: "25m"
+              memory: "64Mi"
             limits:
-              cpu: "200m"        
-              memory: "128Mi"                                       
-                                                   
-
-
-
-          
+              cpu: "200m"
+              memory: "128Mi"
