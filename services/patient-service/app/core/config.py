@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Application configuration (typed, validated, environment-driven settings)
 # =============================================================================
@@ -23,13 +22,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-
     # ── Service identity ──────────────────────────────────────────
     service_name: str = "patient-service"
     service_version: str = "0.1.0"
-    environment: Literal["dev", "staging", "prod"] = Field(
-        "dev", alias="ENVIRONMENT"
-    )
+    environment: Literal["dev", "staging", "prod"] = Field("dev", alias="ENVIRONMENT")
 
     # ── Security ──────────────────────────────────────────────────
     patient_service_api_key: str = Field(..., alias="PATIENT_SERVICE_API_KEY")

@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Patient domain service (business logic, validation, audit logging)
 # =============================================================================
@@ -344,9 +343,7 @@ class PatientService:
                     )
 
                 if existing_by_nhs and existing_by_nhs.id != patient_id:
-                    span.set_status(
-                        Status(StatusCode.ERROR, "NHS number conflict")
-                    )
+                    span.set_status(Status(StatusCode.ERROR, "NHS number conflict"))
                     span.set_attribute("error.type", "nhs_number_conflict")
                     span.add_event("patient_update_rejected_nhs_number_conflict")
                     raise HTTPException(
@@ -584,5 +581,3 @@ class PatientService:
             ),
         ]
         self.repository.seed(seeded)
-
-        

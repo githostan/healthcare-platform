@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Structured JSON logging configuration
 # =============================================================================
@@ -43,6 +42,7 @@ class TraceContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         try:
             from opentelemetry import trace
+
             span = trace.get_current_span()
             ctx = span.get_span_context()
             if ctx.is_valid:

@@ -1,4 +1,3 @@
-
 # =============================================================================
 # OpenTelemetry bootstrap for patient-service
 # =============================================================================
@@ -73,7 +72,7 @@ def configure_telemetry(app: FastAPI, settings: Settings) -> None:
         sampler=_build_sampler(settings),
     )
     exporter = _build_exporter(settings)
-    
+
     if settings.otel_exporter_otlp_endpoint:
         provider.add_span_processor(BatchSpanProcessor(exporter))
     else:
@@ -86,7 +85,7 @@ def configure_telemetry(app: FastAPI, settings: Settings) -> None:
     _instrument_libraries(app)
 
     # Verify it stuck
-    actual = trace.get_tracer_provider()
+
     logger.info(
         "OpenTelemetry initialised",
         extra={
@@ -107,15 +106,17 @@ def _build_resource(settings: Settings) -> Resource:
     API in deployment.yml — they identify exactly which pod generated
     a trace in a multi-replica deployment.
     """
-    return Resource.create({
-        "service.name": settings.service_name,
-        "service.version": settings.service_version,
-        "service.namespace": "biomeshcore",
-        "deployment.environment": settings.environment,
-        "k8s.namespace.name": settings.k8s_namespace,
-        "k8s.pod.name": settings.k8s_pod_name,
-        "k8s.node.name": settings.k8s_node_name,
-    })
+    return Resource.create(
+        {
+            "service.name": settings.service_name,
+            "service.version": settings.service_version,
+            "service.namespace": "biomeshcore",
+            "deployment.environment": settings.environment,
+            "k8s.namespace.name": settings.k8s_namespace,
+            "k8s.pod.name": settings.k8s_pod_name,
+            "k8s.node.name": settings.k8s_node_name,
+        }
+    )
 
 
 def _build_sampler(settings: Settings):
@@ -129,9 +130,7 @@ def _build_sampler(settings: Settings):
         1.0 = record every trace (dev default)
         0.1 = record 10% of traces (high-traffic production)
     """
-    return ParentBased(
-        root=TraceIdRatioBased(settings.otel_sampling_ratio)
-    )
+    return ParentBased(root=TraceIdRatioBased(settings.otel_sampling_ratio))
 
 
 def _build_exporter(settings: Settings):
@@ -187,10 +186,12 @@ def _configure_propagators() -> None:
     format, outgoing requests include both.
     """
     set_global_textmap(
-        CompositePropagator([
-            TraceContextTextMapPropagator(),
-            B3MultiFormat(),
-        ])
+        CompositePropagator(
+            [
+                TraceContextTextMapPropagator(),
+                B3MultiFormat(),
+            ]
+        )
     )
 
 

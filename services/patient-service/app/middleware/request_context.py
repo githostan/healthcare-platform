@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Request context middleware
 # (correlation IDs, rate limiting, Prometheus metrics, structured logging)
@@ -58,9 +57,7 @@ class RequestContextMiddleware:
         self.logger = logger
         self.requests_by_key: dict[str, deque[float]] = defaultdict(deque)
 
-    async def __call__(
-        self, scope: Scope, receive: Receive, send: Send
-    ) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -120,7 +117,7 @@ class RequestContextMiddleware:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
-                # Inject MutableHeaders 
+                # Inject MutableHeaders
                 headers = MutableHeaders(scope=message)
                 headers["X-Request-ID"] = request_id
                 headers["X-Correlation-ID"] = correlation_id
