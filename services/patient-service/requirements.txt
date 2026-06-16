@@ -18,24 +18,29 @@ email-validator==2.3.0
 prometheus-client==0.20.0
 
 # ── Observability: OpenTelemetry core ────────────────────────────
-opentelemetry-api==1.24.0
-opentelemetry-sdk==1.24.0
+opentelemetry-api==1.33.1
+opentelemetry-sdk==1.33.1
 
 # ── Observability: OTLP exporters (both protocols) ───────────────
-opentelemetry-exporter-otlp-proto-grpc==1.24.0
-opentelemetry-exporter-otlp-proto-http==1.24.0
+opentelemetry-exporter-otlp-proto-grpc==1.33.1
+opentelemetry-exporter-otlp-proto-http==1.33.1
 
 # ── Observability: Auto-instrumentation ──────────────────────────
-opentelemetry-instrumentation-fastapi==0.45b0
-opentelemetry-instrumentation-httpx==0.45b0
+opentelemetry-instrumentation-fastapi==0.54b1
+opentelemetry-instrumentation-httpx==0.54b1
 
 # ── Observability: Future instrumentation ────────────────────────
 # Installed now — activates automatically when library is added
 
 # ── Observability: Propagators ────────────────────────────────────
-opentelemetry-propagator-b3==1.24.0
+opentelemetry-propagator-b3==1.33.1
 
 # ── Observability: Logging ────────────────────────────────────────
-opentelemetry-instrumentation-logging==0.45b0
+opentelemetry-instrumentation-logging==0.54b1
+
+# ── Protobuf — pinned to fix SNYK-PYTHON-PROTOBUF-15090738 ──────────────────
+# Transitive dependency via opentelemetry-exporter-otlp-proto-grpc
+# protobuf@4.25.9 has Uncontrolled Recursion [High] — pinned to 5.29.6
+protobuf==5.29.6
 
 
