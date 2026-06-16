@@ -25,6 +25,16 @@ from fastapi import HTTPException
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
+from app.metrics.collector import (
+    active_patients_gauge,
+    eligibility_checks_total,
+    patients_created_total,
+    patients_creation_failed_total,
+    patients_retrieved_total,
+    patients_soft_deleted_total,
+    patients_status_updated_total,
+    patients_updated_total,
+)
 from app.models.patient import PatientRecord
 from app.repositories.patient_repository import InMemoryPatientRepository
 from app.schemas.patient import (
@@ -142,6 +152,8 @@ class PatientService:
                 },
             )
 
+            patients_retrieved_total.labels(method="list").inc()
+
             return PatientListResponse(
                 items=[self._to_schema(p) for p in paged],
                 page=page,
@@ -170,6 +182,7 @@ class PatientService:
 
             span.set_attribute("patient.status", record.status)
             span.add_event("patient_retrieved")
+            patients_retrieved_total.labels(method="by_id").inc()
             return self._to_schema(record)
 
     def get_by_nhs_number(self, nhs_number: str) -> PatientOut:
@@ -193,6 +206,7 @@ class PatientService:
             span.set_attribute("patient.id", str(record.id))
             span.set_attribute("patient.status", record.status)
             span.add_event("patient_retrieved_by_nhs_number")
+            patients_retrieved_total.labels(method="by_nhs_number").inc()
             return self._to_schema(record)
 
     def get_eligibility(self, patient_id: str) -> PatientEligibilityResponse:
@@ -212,6 +226,7 @@ class PatientService:
                 span.set_attribute("eligibility.result", "not_found")
                 span.set_attribute("eligibility.eligible", False)
                 span.add_event("eligibility_checked_not_found")
+                eligibility_checks_total.labels(result="not_found").inc()
                 return PatientEligibilityResponse(
                     patient_id=patient_id,
                     exists=False,
@@ -233,6 +248,9 @@ class PatientService:
                     "patient.status": record.status,
                 },
             )
+            eligibility_checks_total.labels(
+                result="eligible" if eligible else "ineligible"
+            ).inc()
 
             return PatientEligibilityResponse(
                 patient_id=patient_id,
@@ -272,6 +290,7 @@ class PatientService:
                     )
                     span.set_attribute("error.type", "duplicate_nhs_number")
                     span.add_event("patient_create_rejected_duplicate_nhs_number")
+                    patients_creation_failed_total.labels(reason="duplicate_nhs").inc()
                     raise HTTPException(
                         status_code=409,
                         detail="Patient NHS number already exists",
@@ -292,6 +311,8 @@ class PatientService:
                         "patient.status": record.status,
                     },
                 )
+                patients_created_total.inc()
+                active_patients_gauge.inc()
 
                 self._audit(
                     action="create",
@@ -371,6 +392,7 @@ class PatientService:
                         "patient.status": record.status,
                     },
                 )
+                patients_updated_total.inc()
 
                 self._audit(
                     action="update",
@@ -448,6 +470,13 @@ class PatientService:
                         "status.new": str(payload.status),
                     },
                 )
+                patients_status_updated_total.labels(
+                    new_status=str(payload.status)
+                ).inc()
+                if str(payload.status) == "INACTIVE" and previous_status == "ACTIVE":
+                    active_patients_gauge.dec()
+                elif str(payload.status) == "ACTIVE" and previous_status == "INACTIVE":
+                    active_patients_gauge.inc()
 
                 self._audit(
                     action="status_update",
@@ -523,6 +552,8 @@ class PatientService:
                         "status.new": "INACTIVE",
                     },
                 )
+                patients_soft_deleted_total.inc()
+                active_patients_gauge.dec()
 
                 self._audit(
                     action="soft_delete",
@@ -581,3 +612,5 @@ class PatientService:
             ),
         ]
         self.repository.seed(seeded)
+
+        active_patients_gauge.set(len([p for p in seeded if p.status == "ACTIVE"]))
