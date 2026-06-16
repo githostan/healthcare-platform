@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Patient domain service (business logic, validation, audit logging)
 # =============================================================================
@@ -291,9 +290,7 @@ class PatientService:
                     )
                     span.set_attribute("error.type", "duplicate_nhs_number")
                     span.add_event("patient_create_rejected_duplicate_nhs_number")
-                    patients_creation_failed_total.labels(
-                        reason="duplicate_nhs"
-                    ).inc()
+                    patients_creation_failed_total.labels(reason="duplicate_nhs").inc()
                     raise HTTPException(
                         status_code=409,
                         detail="Patient NHS number already exists",
@@ -616,6 +613,4 @@ class PatientService:
         ]
         self.repository.seed(seeded)
 
-        active_patients_gauge.set(
-            len([p for p in seeded if p.status == "ACTIVE"])
-        )
+        active_patients_gauge.set(len([p for p in seeded if p.status == "ACTIVE"]))
