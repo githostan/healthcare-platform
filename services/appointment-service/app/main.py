@@ -14,7 +14,6 @@ Features:
 """
 
 import json
-import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -32,6 +31,7 @@ from pydantic import BaseModel, Field
 from starlette.status import HTTP_303_SEE_OTHER
 
 from app.auth_legacy import require_api_key
+from app.core.logging_config import configure_logging, get_logger
 
 
 # ---- Path setup (repo-structure safe) ----
@@ -43,11 +43,8 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 # ---- logging setup (structured JSON to stdout) ----
-logger = logging.getLogger("appointment_api")
-logger.setLevel(logging.INFO)
-_handler = logging.StreamHandler()
-_handler.setFormatter(logging.Formatter("%(message)s"))
-logger.handlers = [_handler]
+configure_logging()
+logger = get_logger("appointment_api")
 
 
 def _utcnow() -> datetime:
