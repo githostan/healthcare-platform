@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Appointment domain service (business logic, validation, audit logging)
 # =============================================================================
@@ -95,9 +94,7 @@ class AppointmentService:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         if dt <= datetime.now(timezone.utc):
-            raise AppointmentValidationError(
-                "appointment_time must be in the future"
-            )
+            raise AppointmentValidationError("appointment_time must be in the future")
 
     def _get_record(self, appointment_id: str) -> AppointmentRecord:
         """
