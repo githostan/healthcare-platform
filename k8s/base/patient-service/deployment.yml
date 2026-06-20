@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: patient-service
-          image: ghcr.io/githostan/healthcare-platform/patient-service:sha-fb2e6d4
+          image: ghcr.io/githostan/healthcare-platform/patient-service:sha-a4efba0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

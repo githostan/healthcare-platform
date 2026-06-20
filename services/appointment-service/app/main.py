@@ -31,7 +31,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from pydantic import BaseModel, Field
 from starlette.status import HTTP_303_SEE_OTHER
 
-from app.auth import require_api_key
+from app.auth_legacy import require_api_key
 
 
 # ---- Path setup (repo-structure safe) ----
