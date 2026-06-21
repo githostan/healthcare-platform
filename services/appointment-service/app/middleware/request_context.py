@@ -87,6 +87,12 @@ class RequestContextMiddleware:
         method = scope["method"]
         path = scope["path"]
 
+        # Make IDs available to downstream route handlers via request.scope,
+        # so app/api/v1/appointments.py reads the same IDs this middleware
+        # generated, rather than each layer generating independent UUIDs.
+        scope["request_id"] = request_id
+        scope["correlation_id"] = correlation_id
+
         client_key = self._client_key(scope)
         if self._is_rate_limited(client_key):
             rate_limit_hits_total.inc()
