@@ -16,5 +16,5 @@ def test_info(client):
     """Test that service metadata endpoint returns correct information."""
     response = client.get("/info")
     assert response.status_code == 200
-    assert response.json()["service"] == "appointment-api"
+    assert response.json()["service"] == "appointment-service"
     assert "version" in response.json()

@@ -170,6 +170,7 @@ def cancel_appointment(
 @router.delete(
     "/{appointment_id}",
     status_code=http_status.HTTP_204_NO_CONTENT,
+    response_model=None,
     responses=AUTH_RESPONSES,
 )
 def delete_appointment(
